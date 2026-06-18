@@ -1,0 +1,14 @@
+HTML CSÚSZDA HASZNÁLATI ÚTMUTATÓ
+
+Minden elem személyre szabható. Új szakaszt a lista alján a zöld hozzáadás gombbal adhatunk hozzá. A következő tulajdonságok szerkeszthetők:
+Típus: Egyenes vagy kanyar legyen az elem
+Keresztmetszet: Lehet kör (normál csőcsúszda), Nyitott háromnegyedkör (normál nyitott csúszda), Ovális/szem (Varázsalagútnál használják) és lapos aljú félkör, amit általában közbanső medencék esetén használnak.
+Az átmérő szabadon állítható méterben, és a lejtés is lehet különböző (normál anakonda csúszdánál ez a lejtés általában 0.08 és 0.12 között van, kicsit gyorsabbaknál 0.20, gyors csúszdáknál pl. Turbó vagy Kamikaze 0.30 vagy afölött.)
+A szín bármilyen RGB szín lehet. Nyitott csúszda esetén a csúszda teljes egészét, zárt csúszda esetén a külsejét befolyásolja.
+Ha többféle keresztmetszet, lejtés, vagy átmérő is van egy csúszdában, akkor ezek között sima az átmenet.
+Fényeffektek is hozzáadhatók a "Fény" listából. A legtöbb megfelelően működik többféle keresztmetszeten is, de kör alakű csőben a legmegbízhatóbbak.
+Miután a tulajdonságokat megváltoztattuk, akkor nyomjuk meg a "Frissítés/építés" gombot: A csúszda a változtatásokkal üzemel.
+A "Mentés" gombbal JSON fájlba menthetjük a csúszdát, és be is tölthetjük később.
+
+A "Mód: Sorrendi/Véletlen" gombbal állítható az animációk sorrendje a LED gyűrűkben. Sorrendi módban eredeti sorrendben ismétli a halmaz elemeit, míg véletlen sorrendben megkeveri azokat.
+A "Kamera Megállítása/Folytatása" gombbal le lehet állni a csúszdában, és utána folytatni a csúszást. Leállás közben az időmérő megáll.
