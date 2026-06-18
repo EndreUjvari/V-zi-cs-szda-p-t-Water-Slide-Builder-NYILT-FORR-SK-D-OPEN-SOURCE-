@@ -1,0 +1,2251 @@
+<!DOCTYPE html>
+<html lang="hu">
+<head>
+    <meta charset="UTF-8">
+    <title>3D Csúszda - Precíz Narancs Háttér és LED Animációk</title>
+    <style>
+        body { margin: 0; overflow: hidden; background: #000; }
+        canvas { display: block; }
+    </style>
+</head>
+<style>
+        body { margin: 0; overflow: hidden; background: #000; font-family: sans-serif; }
+        canvas { display: block; }
+        #ui-panel { 
+            position: absolute; top: 120px; left: 20px; width: 280px; 
+            background: rgba(0,0,0,0.8); color: white; padding: 15px; 
+            border-radius: 8px; max-height: 70vh; overflow-y: auto; z-index: 100;
+            border: 1px solid #444;
+        }
+        .param-group { margin-bottom: 15px; border-bottom: 1px solid #333; padding-bottom: 10px; }
+        label { display: block; font-size: 12px; color: #aaa; margin-bottom: 5px; }
+        input, select { width: 100%; background: #222; color: #fff; border: 1px solid #555; padding: 5px; margin-bottom: 5px; }
+        button.add-btn { background: #28a745; color: white; border: none; padding: 5px 10px; cursor: pointer; width: 100%; margin-top: 5px; }
+        button.rem-btn { background: #dc3545; color: white; border: none; padding: 2px 5px; float: right; cursor: pointer; }
+        .segment-card { background: #1a1a1a; padding: 10px; margin-bottom: 8px; border-left: 3px solid #0088ff; }
+</style>
+<body>
+		<div id="timerDisplay" style="position: absolute; top: 20px; left: 50%; transform: translateX(-50%); z-index: 10; font-size: 32px; font-weight: bold; color: #ffcc00; font-family: monospace; text-shadow: 2px 2px 4px #000; background: rgba(0,0,0,0.5); padding: 5px 15px; border-radius: 8px;">
+			00:00.00
+		</div>
+    <button id="pauseBtn" style="position: absolute; top: 20px; left: 20px; z-index: 10; padding: 10px 20px; font-size: 16px; cursor: pointer; background: #ff7700; color: white; border: none; border-radius: 5px; font-family: sans-serif; font-weight: bold; box-shadow: 0 4px 6px rgba(0,0,0,0.5);">
+        Kamera Megállítása
+    </button>
+	<button id="modeBtn" style="position: absolute; top: 70px; left: 20px; z-index: 10; padding: 10px 20px; font-size: 16px; cursor: pointer; background: #0088ff; color: white; border: none; border-radius: 5px; font-family: sans-serif; font-weight: bold; box-shadow: 0 4px 6px rgba(0,0,0,0.5);">
+        Mód: Sorrendi
+    </button>
+	<div id="ui-panel">
+        <div class="param-group">
+            <label>Csúszda átmérő (m)</label>
+            <input type="number" id="slideDiameter" step="0.1" value="2.0">
+            <label>Lejtés meredeksége</label>
+            <input type="number" id="globalSlope" step="0.01" value="0.055">
+        </div>
+	<div class="param-group" style="border-top: 1px solid #444; padding-top: 10px; margin-top: 10px;">
+    		<label>Statisztika:</label>
+    		<div style="font-size: 14px; color: #ffcc00;">
+       			Hossz: <span id="lengthVal">0</span> m<br>
+        	Magasság: <span id="heightVal">0</span> m
+    	</div>
+</div>
+        <div id="segments-container"></div>
+        <button class="add-btn" onclick="addSegmentUI()">+ Új szakasz hozzáadása</button>
+        <button class="add-btn" style="background:#ff7700; margin-top:15px;" onclick="rebuildSlide()">FRISSÍTÉS / ÉPÍTÉS</button>
+		<button class="add-btn" style="background:#17a2b8; margin-top:15px;" onclick="saveTrack()">Mentés (JSON)</button>
+		<button class="add-btn" style="background:#6c757d; margin-top:5px;" onclick="document.getElementById('fileInput').click()">Betöltés</button>
+		<button class="add-btn" style="background:#007bff; margin-top:5px;" onclick="randomBodySlideGenerator()">
+			RANDOM TESTCSÚSZDA (100m)
+		</button>
+		<button class="add-btn" style="background:#9900ff; margin-top:5px;" onclick="randomStarGateGenerator()">
+			RANDOM GUMIS CSÚSZDA (60m)
+		</button>
+		<input type="file" id="fileInput" style="display:none" accept=".json" onchange="loadTrack(event)">
+		<button class="add-btn" id="viewBtn" style="background:#444; margin-top:5px;">Nézet: Belső</button>
+		<label>Sebesség (m/s)</label>
+		<input type="number" id="moveSpeed" step="0.5" value="2.0">    </div>
+<script type="importmap">
+    {
+        "imports": {
+            "three": "https://unpkg.com/three@0.160.0/build/three.module.js",
+            "three/addons/": "https://unpkg.com/three@0.160.0/examples/jsm/"
+        }
+    }
+</script>
+<script type="module">
+	let orangeColor = 0x884400;
+	let slideTime = 0;
+	let timerRunning = false;
+	const timerDisplay = document.getElementById('timerDisplay');
+    import * as THREE from 'three';
+	import { OrbitControls } from 'three/addons/controls/OrbitControls.js';
+
+	
+	
+
+	let isExternal = false;
+	let controls;
+	const diameters = [1.4, 2];
+	
+    
+	let PARAMS = {
+		segments: [
+			{ type: 'turn', radius: 5, angle: 90, dir: 'left', light: 'rings', diameter: 2.0, slope: 0.06, shape: 'circle', color: '#ffcc00' },
+			{ type: 'turn', radius: 5, angle: 90, dir: 'right', light: 'stars2', diameter: 2.0, slope: 0.06, shape: 'circle', color: '#ffcc00' },
+			{ type: 'straight', len: 4, light: 'led_displays', diameter: 2.0, slope: 0.06, shape: 'circle', color: '#ffcc00' }
+		]
+	};
+
+	window.addSegmentUI = function() {
+        
+        const lastSeg = PARAMS.segments.length > 0 ? PARAMS.segments[PARAMS.segments.length - 1] : null;
+        PARAMS.segments.push({ 
+            type: 'straight', 
+            len: 5,
+            diameter: lastSeg ? lastSeg.diameter : 2.0,
+            slope: lastSeg ? lastSeg.slope : 0.06,
+            shape: lastSeg ? lastSeg.shape : 'circle',
+            color: lastSeg ? lastSeg.color : '#ffcc00',
+            light: lastSeg ? lastSeg.light : 'rings'
+        });
+        renderUI();
+    };
+
+	window.removeSegment = function(idx) {
+        PARAMS.segments.splice(idx, 1);
+        renderUI();
+    };
+
+	
+	function getRandomLight(type) {
+		const universal = ["dark", "rings", "dots", "stars2", "floor_run", "zigzag", "led_displays"];
+		const straightOnly = ["strips", "center_tris"];
+		const turnOnly = ["turn_circles", "turn_droplets"];
+
+		if (type === "straight") {
+			const list = [...universal, ...straightOnly];
+			return list[Math.floor(Math.random() * list.length)];
+		} else {
+			const list = [...universal, ...turnOnly];
+			return list[Math.floor(Math.random() * list.length)];
+		}
+	}
+
+	
+	window.randomBodySlideGenerator = function() {
+		PARAMS.segments = [];
+		const globalD = 1.4;
+		const globalS = 0.10;
+
+		let currentLength = 0;
+		let currentYaw = -Math.PI / 2;
+		const targetLength = 100;
+
+		while (currentLength < targetLength) {
+			let type = Math.random() > 0.3 ? "turn" : "straight";
+			if (type === "straight") {
+				PARAMS.segments.push({ type: "straight", len: 4, light: getRandomLight("straight"), diameter: globalD, slope: globalS, shape: 'circle', color: '#ffcc00' });
+				currentLength += 4;
+			} else {
+				let radius = 3.75;
+				let angle = 90 + Math.random() * 90;
+				let dir = Math.random() > 0.5 ? "left" : "right";
+				PARAMS.segments.push({ type: "turn", radius: radius, angle: angle, dir: dir, light: getRandomLight("turn"), diameter: globalD, slope: globalS, shape: 'circle', color: '#ffcc00' });
+				currentLength += (radius * angle * Math.PI / 180);
+			}
+		}
+		renderUI();
+		rebuildSlide();
+	}
+
+	window.randomStarGateGenerator = function() {
+		PARAMS.segments = [];
+		const globalD = 2.0;
+		const globalS = 0.055;
+
+		let currentLength = 0;
+		while (currentLength < 60) {
+			let radius = 5;
+			let angle = 45 + Math.random() * 90;
+			let dir = Math.random() > 0.5 ? "left" : "right";
+			PARAMS.segments.push({ type: "turn", radius: radius, angle: angle, dir: dir, light: getRandomLight("turn"), diameter: globalD, slope: globalS, shape: 'circle', color: '#ff7700' });
+			currentLength += (radius * angle * Math.PI / 180);
+		}
+		renderUI();
+		rebuildSlide();
+	}
+	function playComplexRumble() {
+		if (audioCtx.state === 'suspended') audioCtx.resume();
+		const duration = 4.5;
+		const now = audioCtx.currentTime;
+		const masterGain = audioCtx.createGain();
+		
+		
+		[32, 45, 55, 62].forEach((freq, i) => {
+			const osc = audioCtx.createOscillator();
+			const g = audioCtx.createGain();
+			osc.type = i % 2 === 0 ? 'sine' : 'triangle';
+			osc.frequency.setValueAtTime(freq, now);
+			osc.frequency.exponentialRampToValueAtTime(freq * 0.8, now + duration);
+			
+			
+			g.gain.setValueAtTime(0, now);
+			g.gain.linearRampToValueAtTime(0.2, now + 0.5 + i*0.2);
+			g.gain.linearRampToValueAtTime(0, now + duration);
+			
+			osc.connect(g);
+			g.connect(masterGain);
+			osc.start(); osc.stop(now + duration);
+		});
+
+		
+		const bufferSize = audioCtx.sampleRate * duration;
+		const buffer = audioCtx.createBuffer(1, bufferSize, audioCtx.sampleRate);
+		const data = buffer.getChannelData(0);
+		for (let i = 0; i < bufferSize; i++) data[i] = Math.random() * 2 - 1;
+		
+		const noise = audioCtx.createBufferSource();
+		const noiseFilter = audioCtx.createBiquadFilter();
+		const noiseGain = audioCtx.createGain();
+		
+		noise.buffer = buffer;
+		noiseFilter.type = 'lowpass';
+		noiseFilter.frequency.setValueAtTime(400, now);
+		noiseFilter.frequency.exponentialRampToValueAtTime(40, now + duration);
+		
+		noiseGain.gain.setValueAtTime(0, now);
+		noiseGain.gain.linearRampToValueAtTime(0.1, now + 0.2);
+		noiseGain.gain.exponentialRampToValueAtTime(0.001, now + duration);
+		
+		noise.connect(noiseFilter);
+		noiseFilter.connect(noiseGain);
+		noiseGain.connect(masterGain);
+		noise.start();
+
+		masterGain.connect(audioCtx.destination);
+	}
+	
+	const THEME_ORANGE = orangeColor;
+	
+	
+    function getSlideProps(dist) {
+        if (!PARAMS.segments || PARAMS.segments.length === 0) 
+            return { diameter: 2, slope: 0.05, shape1: 'circle', shape2: 'circle', t: 0, color: '#ffcc00', isOpen: false };
+        
+        let cur = 0;
+        for (let i = 0; i < PARAMS.segments.length; i++) {
+            let seg = PARAMS.segments[i];
+            let slen = seg.type === 'straight' ? (seg.len || 0.1) : ((parseFloat(seg.radius) || 0.1) * Math.abs(parseFloat(seg.angle) || 90) * Math.PI / 180);
+            
+            
+            if (dist <= cur + slen + 0.0001 || i === PARAMS.segments.length - 1) {
+                let prev = i > 0 ? PARAMS.segments[i-1] : seg;
+                let t = slen <= 0 ? 0 : Math.max(0, Math.min(1, (dist - cur) / slen));
+                
+                return {
+                    diameter: (prev.diameter || 2.0) * (1 - t) + (seg.diameter || 2.0) * t,
+                    slope: (prev.slope || 0.06) * (1 - t) + (seg.slope || 0.06) * t,
+                    shape1: prev.shape || 'circle',
+                    shape2: seg.shape || 'circle',
+                    t: t,
+                    color: seg.color || '#ffcc00',
+                    isOpen: seg.shape === 'open'
+                };
+            }
+            cur += slen;
+        }
+        
+        const last = PARAMS.segments[PARAMS.segments.length - 1];
+        return { diameter: last.diameter, slope: last.slope, shape1: last.shape, shape2: last.shape, t: 1, color: last.color, isOpen: last.shape === 'open' };
+    }
+
+	function getShapeXY(shape, r, angle) {
+		let x = Math.cos(angle) * r;
+		let y = Math.sin(angle) * r;
+
+		if (shape === 'oval') {
+        
+        const height = r * 2;
+        const width = height / 0.666;
+        
+        
+        x = Math.cos(angle) * (width / 2);
+        y = Math.sin(angle) * (height / 2);
+
+        
+        const flatZone = 0.3; 
+
+        if (x > -flatZone && x < flatZone) {
+            
+            if (y > 0) {
+                y = height / 2; 
+            } else {
+                y = -height / 2; 
+            }
+        }
+        
+        
+    }  else if (shape === 'half') {
+			
+			
+			
+			let R = r * 2; 
+			
+			x = Math.cos(angle) * R;
+			y = Math.sin(angle) * R;
+
+			
+			
+			
+			
+			if (y < 0) y = 0; 
+			y -= r; 
+		}
+		return { x, y };
+	}
+
+	function getPointOnSlide(dist, localAngle, offsetFromWall = 0.01) {
+		if (!mainPath) return new THREE.Vector3();
+		const clampedDist = Math.max(0, Math.min(totalLen, dist));
+		const t = clampedDist / totalLen;
+		const pos = mainPath.getPointAt(t);
+		const T = mainPath.getTangentAt(t).normalize();
+
+		const worldUp = new THREE.Vector3(0, 1, 0);
+		const B = new THREE.Vector3().crossVectors(T, worldUp).normalize();
+		const N = new THREE.Vector3().crossVectors(B, T).normalize();
+
+        let props = getSlideProps(clampedDist);
+		const r = (props.diameter / 2) - offsetFromWall;
+        
+        let p1 = getShapeXY(props.shape1, r, localAngle);
+        let p2 = getShapeXY(props.shape2, r, localAngle);
+        
+        let ox = p1.x * (1 - props.t) + p2.x * props.t;
+        let oy = p1.y * (1 - props.t) + p2.y * props.t;
+		
+		
+
+		return pos.clone().add(B.clone().multiplyScalar(ox)).add(N.clone().multiplyScalar(oy));
+	}
+	
+	let slideGroup = new THREE.Group(); 
+    let allRings = [];
+    let starPoints = [];
+	let star2Points = [];
+    let stripLeds = [];
+	let floorLights = [];
+	let centerTriangles = []; 
+	let turnLeds = [];      
+    let zigzagLeds = [];    
+	let allDisplays = []; 
+	const ledPixelGeo = new THREE.CircleGeometry(0.006, 4); 
+	let imageDisplays = []; 
+	const displayGeoBase = new THREE.CircleGeometry(0.335, 32);
+	let jumpscares = []; 
+	let flashIntensity = 0; 
+	const audioCtx = new (window.AudioContext || window.webkitAudioContext)();
+	let gunBarrelLeds = [];
+	let waterCurtains = [];
+	
+	const waterAlphaTex = new THREE.TextureLoader().load('https://threejs.org/examples/textures/lava/cloud.png');
+	waterAlphaTex.wrapS = waterAlphaTex.wrapT = THREE.RepeatWrapping;
+
+	function playCreepySound() {
+		if (audioCtx.state === 'suspended') audioCtx.resume();
+		const osc = audioCtx.createOscillator();
+		const gain = audioCtx.createGain();
+		
+		osc.type = 'sawtooth';
+		osc.frequency.setValueAtTime(150, audioCtx.currentTime);
+		osc.frequency.exponentialRampToValueAtTime(40, audioCtx.currentTime + 1.5);
+		
+		gain.gain.setValueAtTime(0.3, audioCtx.currentTime);
+		gain.gain.linearRampToValueAtTime(0, audioCtx.currentTime + 1.5);
+		
+		osc.connect(gain);
+		gain.connect(audioCtx.destination);
+		osc.start(); osc.stop(audioCtx.currentTime + 1.5);
+	}
+	
+    
+    function createDropletShape(w, h) {
+        const shape = new THREE.Shape();
+        shape.moveTo(0, h);
+        shape.bezierCurveTo(w, h/2, w, 0, 0, 0);
+        shape.bezierCurveTo(-w, 0, -w, h/2, 0, h);
+        return new THREE.ShapeGeometry(shape);
+    }
+    const dropletGeo = createDropletShape(0.2, 0.5);
+
+    
+    function createTriangleGeo(baseWidth, height) {
+        const shape = new THREE.Shape();
+        
+        shape.moveTo(-baseWidth / 2, 0);
+        shape.lineTo(baseWidth / 2, 0);
+        shape.lineTo(0, height);
+        shape.lineTo(-baseWidth / 2, 0);
+        return new THREE.ShapeGeometry(shape);
+    }
+
+    
+	const triGeoOuterPre = createTriangleGeo(0.24, 0.7); 
+    const triGeoInnerPre = createTriangleGeo(0.14, 0.55);
+    const starGeoOuterPre = createStarGeometry(0.025, 0.01);
+    const starGeoInnerPre = createStarGeometry(0.015, 0.005);
+    const triGeoOuter = createTriangleGeo(0.3, 0.8); 
+    const triGeoInner = createTriangleGeo(0.2, 0.65); 
+	const squareGeoPre = new THREE.PlaneGeometry(0.02, 0.02);
+    const dotGeoPre = new THREE.CircleGeometry(0.01, 8);
+	const orangeMat = new THREE.MeshBasicMaterial({ color: orangeColor, side: THREE.DoubleSide });
+    const redMatDot = new THREE.MeshBasicMaterial({ color: 0xff0000, side: THREE.DoubleSide });
+    const whiteMatPure = new THREE.MeshBasicMaterial({ color: 0xffffff, side: THREE.DoubleSide });
+	const orangeBaseMat = new THREE.MeshBasicMaterial({ color: THEME_ORANGE, side: THREE.DoubleSide });
+    const floorBgMat = new THREE.MeshBasicMaterial({ color: THEME_ORANGE, side: THREE.DoubleSide });
+    const floorWhiteMat = new THREE.MeshBasicMaterial({ color: 0xffffff, side: THREE.DoubleSide }); 
+    const multiColors = [0xff0000, 0x00ff00, 0xffff00, 0x0000ff]; 
+
+    
+    function createStarGeometry(outerRadius, innerRadius) {
+        const shape = new THREE.Shape();
+        const points = 6;
+        for (let i = 0; i < points * 2; i++) {
+            const r = (i % 2 === 0) ? outerRadius : innerRadius;
+            const a = (i / (points * 2)) * Math.PI * 2;
+            if (i === 0) shape.moveTo(Math.cos(a) * r, Math.sin(a) * r);
+            else shape.lineTo(Math.cos(a) * r, Math.sin(a) * r);
+        }
+        return new THREE.ShapeGeometry(shape);
+    }
+
+    const STAR_SIZE_MULTIPLIER = 1.0; 
+    
+    const starGeoOuter = createStarGeometry(0.025 * STAR_SIZE_MULTIPLIER, 0.01 * STAR_SIZE_MULTIPLIER); 
+    const starGeoInner = createStarGeometry(0.015 * STAR_SIZE_MULTIPLIER, 0.005 * STAR_SIZE_MULTIPLIER);
+    let whiteDots = [];
+    let mainPath, totalLen, frames;
+	
+
+    const SLIDE_RAD = PARAMS.slideDiameter / 2;
+    const LED_RAD = SLIDE_RAD - 0.02;     
+    const BG_RAD = SLIDE_RAD - 0.017;     
+    const SPEED = 2.0; 
+    const OCTANT_LEN = (3.75 * Math.PI) / 4; 
+
+	const scene = new THREE.Scene();
+	scene.background = new THREE.Color(0x000000);
+	const worldUp = new THREE.Vector3(0, 1, 0); 
+    const camera = new THREE.PerspectiveCamera(75, window.innerWidth / window.innerHeight, 0.1, 1000);
+	scene.add(new THREE.AmbientLight(0xffffff, 0.2));
+    
+    
+    const renderer = new THREE.WebGLRenderer({ antialias: true });
+    renderer.localClippingEnabled = true; 
+    renderer.setSize(window.innerWidth, window.innerHeight);
+    document.body.appendChild(renderer.domElement);
+	
+	window.addSegmentUI = function() {
+        PARAMS.segments.push({ type: 'straight', len: 5 });
+        renderUI();
+    };
+	
+	window.removeSegment = function(idx) {
+        PARAMS.segments.splice(idx, 1);
+        renderUI();
+    };
+
+		function renderUI() {
+		const container = document.getElementById('segments-container');
+		container.innerHTML = '';
+		PARAMS.segments.forEach((seg, i) => {
+			const div = document.createElement('div');
+			div.className = 'segment-card';
+			div.innerHTML = `
+				<button class="rem-btn" onclick="removeSegment(${i})">X</button>
+				<label>Típus</label>
+				<select onchange="updateSeg(${i}, 'type', this.value)">
+					<option value="straight" ${seg.type === 'straight' ? 'selected' : ''}>Egyenes</option>
+					<option value="turn" ${seg.type === 'turn' ? 'selected' : ''}>Kanyar</option>
+				</select>
+				
+				<label>Keresztmetszet</label>
+				<select onchange="updateSeg(${i}, 'shape', this.value)">
+					<option value="circle" ${seg.shape === 'circle' ? 'selected' : ''}>Kör</option>
+					<option value="open" ${seg.shape === 'open' ? 'selected' : ''}>Nyitott (3/4, fény nélkül)</option>
+					<option value="oval" ${seg.shape === 'oval' ? 'selected' : ''}>Ovális / Szem</option>
+					<option value="half" ${seg.shape === 'half' ? 'selected' : ''}>Félkör (Lapos alj)</option>
+				</select>
+
+                <div style="display:flex; gap:5px;">
+                    <div style="flex:1;">
+                        <label>Átmérő/Szélesség</label>
+                        <input type="number" step="0.1" value="${seg.diameter || 2.0}" onchange="updateSeg(${i}, 'diameter', parseFloat(this.value))">
+                    </div>
+                    <div style="flex:1;">
+                        <label>Lejtés (Meredekség)</label>
+                        <input type="number" step="0.01" value="${seg.slope || 0.06}" onchange="updateSeg(${i}, 'slope', parseFloat(this.value))">
+                    </div>
+                </div>
+
+                <label>Szín</label>
+                <input type="color" value="${seg.color || '#ffcc00'}" onchange="updateSeg(${i}, 'color', this.value)">
+
+				<label>Világítás típusa</label>
+				<select onchange="updateSeg(${i}, 'light', this.value)">
+					<option value="rings" ${seg.light === 'rings' ? 'selected' : ''}>LED Gyűrűk + Narancs</option>
+					<option value="stars" ${seg.light === 'stars' ? 'selected' : ''}>Csillagos égbolt</option>
+					<option value="stars2" ${seg.light === 'stars2' ? 'selected' : ''}>Csillagos ég v2</option>
+					<option value="dots" ${seg.light === 'dots' ? 'selected' : ''}>Fehér pöttyök</option>
+					<option value="floor_run" ${seg.light === 'floor_run' ? 'selected' : ''}>Padlófény (Futó)</option>
+					<option value="jumpscare" ${seg.light === 'jumpscare' ? 'selected' : ''}>Fénysorompó + Hang</option>
+					${seg.type === 'straight' ? `<option value="strips" ${seg.light === 'strips' ? 'selected' : ''}>Hosszanti LED csíkok</option>` : ''}
+					${seg.type === 'straight' ? `<option value="center_tris" ${seg.light === 'center_tris' ? 'selected' : ''}>Középső 3D Háromszögek</option>` : ''}
+					${seg.type === 'straight' ? `<option value="water_curtain" ${seg.light === 'water_curtain' ? 'selected' : ''}>Vízfüggöny vetítéssel</option>` : ''}
+					<option value="turn_circles" ${seg.light === 'turn_circles' ? 'selected' : ''}>Kanyar: Körök</option>
+					<option value="turn_droplets" ${seg.light === 'turn_droplets' ? 'selected' : ''}>Kanyar: Vízcseppek</option>
+					<option value="zigzag" ${seg.light === 'zigzag' ? 'selected' : ''}>Tető: Cikkcakk vonal</option>
+					${seg.type === 'straight' ? `<option value="text" ${seg.light === 'text' ? 'selected' : ''}>Különleges Felirat</option>` : ''}
+					<option value="dark" ${seg.light === 'dark' ? 'selected' : ''}>Sötét</option>
+					<option value="led_displays" ${seg.light === 'led_displays' ? 'selected' : ''}>Kerek LED kijelzők</option>
+				</select>
+
+				${seg.type === 'straight' ? 
+					`<label>Hossz (m)</label><input type="number" value="${seg.len}" onchange="updateSeg(${i}, 'len', parseFloat(this.value))">` :
+					`<label>Sugár (m)</label><input type="number" value="${seg.radius}" onchange="updateSeg(${i}, 'radius', parseFloat(this.value))">
+					 <label>Szög (°)</label><input type="number" value="${seg.angle}" onchange="updateSeg(${i}, 'angle', parseFloat(this.value))">
+					 <label>Kanyar irány</label>
+					 <select onchange="updateSeg(${i}, 'dir', this.value)">
+						<option value="left" ${seg.dir === 'left' ? 'selected' : ''}>Bal</option>
+						<option value="right" ${seg.dir === 'right' ? 'selected' : ''}>Jobb</option>
+					 </select>`
+				}
+			`;
+			container.appendChild(div);
+		});
+	}
+
+	window.updateSeg = function(i, prop, val) {
+        PARAMS.segments[i][prop] = val;
+        
+        if (prop === 'type' && val === 'turn') { 
+            PARAMS.segments[i].radius = 4; 
+            PARAMS.segments[i].angle = 90; 
+            PARAMS.segments[i].dir = 'left'; 
+        }
+        if (!PARAMS.segments[i].light) PARAMS.segments[i].light = 'rings';
+        renderUI();
+    };
+	
+	function addStartAndEndElements() {
+		const endPos = mainPath.getPointAt(1);
+		const endTangent = mainPath.getTangentAt(1).normalize();
+
+		const flatEndDir = endTangent.clone();
+		flatEndDir.y = 0; 
+		flatEndDir.normalize();
+
+		const endGroup = new THREE.Group();
+		
+	
+	
+	
+
+		const runoutLen = 7;
+		const runoutGeo = new THREE.CylinderGeometry(window.SLIDE_RAD, window.SLIDE_RAD, runoutLen, 32, 1, true, 0, Math.PI);
+		const yellowMat = new THREE.MeshPhongMaterial({ color: 0xffcc00, side: THREE.DoubleSide });
+		const runoutMesh = new THREE.Mesh(runoutGeo, yellowMat);
+		runoutMesh.rotation.set(Math.PI / 2, -Math.PI / 2, 0);
+		runoutMesh.position.set(0, 0, runoutLen / 2);
+		endGroup.add(runoutMesh);
+		
+		endGroup.position.copy(endPos);
+		endGroup.lookAt(endPos.clone().add(flatEndDir));
+		slideGroup.add(endGroup);
+	}
+	
+	window.rebuildSlide = function() {
+		scene.remove(slideGroup);
+		slideGroup = new THREE.Group();
+		
+        
+        allRings = []; starPoints.length = 0; whiteDots.length = 0; floorLights.length = 0; 
+        centerTriangles.length = 0; allDisplays = []; imageDisplays = []; turnLeds.length = 0; 
+        zigzagLeds.length = 0; star2Points.length = 0; stripLeds.length = 0; 
+        bgPositions.length = 0; bgIndices.length = 0; bgIdxOffset = 0; jumpscares = []; waterCurtains = [];
+
+		mainPath = createSlidePath();
+		totalLen = mainPath.getLength();
+		if (totalLen <= 0) return;
+
+		frames = mainPath.computeFrenetFrames(Math.max(200, Math.floor(totalLen * 15)), true);
+
+        
+        window.SLIDE_RAD = (PARAMS.segments[0].diameter || 2.0) / 2;
+
+        
+        buildCustomTube();
+        
+		addStartAndEndElements();
+		addDecorations();
+		
+		scene.add(slideGroup);
+		progress = 0; slideTime = 0; timerRunning = false;
+        
+	    document.getElementById('lengthVal').innerText = totalLen.toFixed(2);
+        let totalDrop = 0; 
+        PARAMS.segments.forEach(s => {
+            let l = s.type === 'straight' ? s.len : (s.radius * Math.abs(s.angle) * Math.PI / 180);
+            totalDrop += l * (s.slope || 0.06);
+        });
+	    document.getElementById('heightVal').innerText = totalDrop.toFixed(2);
+	};
+	
+	window.saveTrack = function() {
+		const dataStr = "data:text/json;charset=utf-8," + encodeURIComponent(JSON.stringify(PARAMS, null, 2));
+		const dlAnchorElem = document.createElement('a');
+		dlAnchorElem.setAttribute("href", dataStr);
+		dlAnchorElem.setAttribute("download", "csuszda_mentes.json");
+		document.body.appendChild(dlAnchorElem);
+		dlAnchorElem.click();
+		dlAnchorElem.remove();
+	};
+
+	window.loadTrack = function(event) {
+		const file = event.target.files[0];
+		if (!file) return;
+		const reader = new FileReader();
+		reader.onload = function(e) {
+			try {
+				const loadedParams = JSON.parse(e.target.result);
+				if (loadedParams.segments) {
+					PARAMS = loadedParams;
+					document.getElementById('slideDiameter').value = PARAMS.slideDiameter || 2;
+					document.getElementById('globalSlope').value = PARAMS.globalSlope || 0.055;
+					renderUI();
+					rebuildSlide();
+				} else {
+					alert("Érvénytelen fájlformátum!");
+				}
+			} catch(err) {
+				alert("Hiba a betöltéskor!");
+			}
+		};
+		reader.readAsText(file);
+		event.target.value = ''; 
+	};
+
+    
+	function createSlidePath() {
+		const path = new THREE.CurvePath();
+		let currP = new THREE.Vector3(0, 0, 0);
+		let currYaw = -Math.PI / 2; 
+		let totalS = 0;
+        let currY = 0; 
+
+		PARAMS.segments.forEach(seg => {
+            const slope = seg.slope !== undefined ? seg.slope : 0.055;
+			if (seg.type === 'straight') {
+				const length = seg.len || 0.1;
+				const nextP = new THREE.Vector3(currP.x + Math.cos(currYaw) * length, 0, currP.z + Math.sin(currYaw) * length);
+                const nextY = currY - length * slope;
+
+				const p1 = currP.clone(); const p2 = nextP.clone();
+				p1.y = currY; p2.y = nextY;
+
+				path.add(new THREE.LineCurve3(p1, p2));
+				currP.copy(nextP);
+                currY = nextY;
+				totalS += length;
+			} 
+			else if (seg.type === 'turn') {
+				const radius = parseFloat(seg.radius) || 0.1;
+				const angleDeg = parseFloat(seg.angle) || 0;
+				const angleRad = (angleDeg * Math.PI) / 180;
+				if (angleDeg === 0) return;
+
+				const isLeft = (seg.dir === 'left');
+				const sweep = isLeft ? -angleRad : angleRad;
+				const centerAngle = currYaw + (isLeft ? -Math.PI/2 : Math.PI/2);
+				const center = new THREE.Vector3(currP.x + Math.cos(centerAngle) * radius, 0, currP.z + Math.sin(centerAngle) * radius);
+				const startAngle = Math.atan2(currP.z - center.z, currP.x - center.x);
+				
+                const curveLen = radius * angleRad;
+                const nextY = currY - curveLen * slope;
+				const steps = Math.ceil(angleDeg / 5) + 5;
+
+				for (let i = 0; i < steps; i++) {
+					const a1 = startAngle + (i / steps) * sweep;
+					const a2 = startAngle + ((i + 1) / steps) * sweep;
+                    const p1Y = currY + (nextY - currY) * (i / steps);
+                    const p2Y = currY + (nextY - currY) * ((i + 1) / steps);
+
+					const p1 = new THREE.Vector3(center.x + Math.cos(a1) * radius, p1Y, center.z + Math.sin(a1) * radius);
+					const p2 = new THREE.Vector3(center.x + Math.cos(a2) * radius, p2Y, center.z + Math.sin(a2) * radius);
+					path.add(new THREE.LineCurve3(p1, p2));
+				}
+				currYaw += sweep;
+				const finalPoint = path.curves[path.curves.length - 1].v2;
+				currP.set(finalPoint.x, 0, finalPoint.z);
+                currY = nextY;
+				totalS += curveLen;
+			}
+		});
+		return path;
+	}
+
+    function buildCustomTube() {
+        const radSegs = 40; 
+        const distSteps = Math.max(200, Math.floor(totalLen * 15));
+        
+        const vertsOut = [], vertsIn = [], indicesOut = [], indicesIn = [], colorsOut = [], colorsIn = [];
+        const cColor = new THREE.Color();
+        const blackColor = new THREE.Color(0x010101);
+
+        for (let i = 0; i <= distSteps; i++) {
+            let dist = (i / distSteps) * totalLen;
+            let props = getSlideProps(dist);
+            cColor.set(props.color);
+
+            for (let j = 0; j <= radSegs; j++) {
+                let a = (j / radSegs) * Math.PI * 2;
+                
+                
+                let vOut = getPointOnSlide(dist, a, 0); 
+                vertsOut.push(vOut.x, vOut.y, vOut.z);
+                colorsOut.push(cColor.r, cColor.g, cColor.b);
+
+                
+                let vIn = getPointOnSlide(dist, a, 0.015);
+                vertsIn.push(vIn.x, vIn.y, vIn.z);
+                if (props.isOpen) {
+                    colorsIn.push(cColor.r, cColor.g, cColor.b);
+                } else {
+                    colorsIn.push(blackColor.r, blackColor.g, blackColor.b);
+                }
+            }
+        }
+
+        for (let i = 0; i < distSteps; i++) {
+            let props = getSlideProps((i + 0.5) / distSteps * totalLen);
+            for (let j = 0; j < radSegs; j++) {
+                let a = (j / radSegs) * Math.PI * 2;
+                if (props.isOpen && a > Math.PI/4 && a < 3*Math.PI/4) continue;
+
+                let row1 = i * (radSegs + 1);
+                let row2 = (i + 1) * (radSegs + 1);
+                let a_idx = row1 + j, b_idx = row2 + j, c_idx = row1 + (j + 1), d_idx = row2 + (j + 1);
+                
+                
+                indicesOut.push(a_idx, b_idx, c_idx); 
+                indicesOut.push(b_idx, d_idx, c_idx);
+
+                
+                indicesIn.push(a_idx, c_idx, b_idx); 
+                indicesIn.push(b_idx, c_idx, d_idx);
+            }
+        }
+
+        const geoOut = new THREE.BufferGeometry();
+        geoOut.setAttribute('position', new THREE.Float32BufferAttribute(vertsOut, 3));
+        geoOut.setAttribute('color', new THREE.Float32BufferAttribute(colorsOut, 3));
+        geoOut.setIndex(indicesOut); geoOut.computeVertexNormals();
+
+        const geoIn = new THREE.BufferGeometry();
+        geoIn.setAttribute('position', new THREE.Float32BufferAttribute(vertsIn, 3));
+        geoIn.setAttribute('color', new THREE.Float32BufferAttribute(colorsIn, 3));
+        geoIn.setIndex(indicesIn); geoIn.computeVertexNormals();
+
+        const matOut = new THREE.MeshPhongMaterial({ vertexColors: true, side: THREE.FrontSide, shininess: 40 });
+        const matIn = new THREE.MeshPhongMaterial({ vertexColors: true, side: THREE.FrontSide, shininess: 10 });
+        
+        slideGroup.add(new THREE.Mesh(geoOut, matOut), new THREE.Mesh(geoIn, matIn));
+    }
+
+	window.rebuildSlide = function() {
+        if(PARAMS.segments.length > 0) window.SLIDE_RAD = PARAMS.segments[0].diameter / 2; 
+
+		scene.remove(slideGroup);
+		slideGroup = new THREE.Group();
+		allRings = []; starPoints.length = 0; whiteDots.length = 0; floorLights.length = 0; centerTriangles.length = 0;
+		allDisplays = []; imageDisplays = []; turnLeds.length = 0; zigzagLeds.length = 0;
+		star2Points.length = 0; stripLeds.length = 0; 
+		bgPositions.length = 0; bgIndices.length = 0; bgIdxOffset = 0;
+		jumpscares = []; flashIntensity = 0;
+
+		mainPath = createSlidePath();
+		totalLen = mainPath.getLength();
+		frames = mainPath.computeFrenetFrames(Math.max(200, Math.floor(totalLen * 15)), true);
+
+        
+        buildCustomTube();
+        
+		addStartAndEndElements();
+		addDecorations();
+		
+        scene.add(slideGroup);
+		progress = 0; slideTime = 0; timerRunning = false;
+        if(timerDisplay) timerDisplay.innerText = "00:00.00";
+	    document.getElementById('lengthVal').innerText = totalLen.toFixed(2);
+        
+        let totalDrop = 0; PARAMS.segments.forEach(s => { totalDrop += (s.type === 'straight' ? s.len : s.radius * Math.abs(s.angle)*Math.PI/180) * s.slope; });
+	    document.getElementById('heightVal').innerText = totalDrop.toFixed(2);
+	};
+
+    const bgPositions = [];
+    const bgIndices = [];
+    let bgIdxOffset = 0;
+
+    const ledGeo = new THREE.SphereGeometry(0.012, 8, 8);
+    const redMat = new THREE.MeshBasicMaterial({ color: 0xff0000 });
+    const whiteMat = new THREE.MeshBasicMaterial({ color: 0xffffff });
+
+    function createOrangeRing(dist) {
+        const pattern = [1, 2, 2, 1, 2, 2, 1, 2, 2, 1, 2, 2, 1]; 
+        const halfW = 0.01; 
+        const tMinus = mainPath.getTangentAt(dist/totalLen).clone().multiplyScalar(-halfW);
+        const tPlus = mainPath.getTangentAt(dist/totalLen).clone().multiplyScalar(halfW);
+        const G_rad = 0.02 / (getSlideProps(dist).diameter/2); 
+        const S_rad = (Math.PI - 13 * G_rad) / 21; 
+
+        let currAngle = 0;
+        for (let half = 0; half < 2; half++) { 
+            for (let i = 0; i < pattern.length; i++) {
+                const segRad = pattern[i] * S_rad;
+                const steps = pattern[i] === 1 ? 2 : 4; 
+                for (let s = 0; s < steps; s++) {
+                    const a1 = currAngle + (s / steps) * segRad;
+                    const a2 = currAngle + ((s + 1) / steps) * segRad;
+                    
+                    const p1 = getPointOnSlide(dist, a1, 0.020);
+                    const p2 = getPointOnSlide(dist, a2, 0.020);
+                    
+                    const v1 = p1.clone().add(tMinus); const v2 = p2.clone().add(tMinus);
+                    const v3 = p1.clone().add(tPlus); const v4 = p2.clone().add(tPlus);
+                    
+                    bgPositions.push(v1.x, v1.y, v1.z, v2.x, v2.y, v2.z, v3.x, v3.y, v3.z, v4.x, v4.y, v4.z);
+                    bgIndices.push(bgIdxOffset, bgIdxOffset + 1, bgIdxOffset + 2, bgIdxOffset + 2, bgIdxOffset + 1, bgIdxOffset + 3);
+                    bgIdxOffset += 4;
+                }
+                currAngle += segRad + G_rad;
+            }
+        }
+    }
+
+	function placeRing(dist) {
+		if (dist > totalLen) return;
+		const ledGroup = []; 
+		createOrangeRing(dist); 
+		for (let i = 0; i < 40; i++) {
+			if (i % 5 === 4) continue; 
+			const a = (i / 40) * Math.PI * 2;
+			const led = new THREE.Mesh(ledGeo, redMat);
+			
+			led.position.copy(getPointOnSlide(dist, a, 0.025));
+			slideGroup.add(led); 
+			ledGroup.push(led);
+		}
+		allRings.push(ledGroup);
+	}
+	
+	function addDecorations() {
+		let currentDist = 0;
+		const worldUp = new THREE.Vector3(0, 1, 0);
+
+		PARAMS.segments.forEach(seg => {
+			const segLen = (seg.type === 'straight') ? (seg.len || 0.1) : ((parseFloat(seg.radius) || 0.1) * (Math.abs(parseFloat(seg.angle)) * Math.PI / 180));
+			const segEnd = currentDist + segLen;
+
+            
+            window.SLIDE_RAD = (seg.diameter || 2.0) / 2;
+
+            if (seg.shape === 'open') {
+                currentDist = segEnd;
+                return;
+            }
+
+			if (seg.light === 'rings') {
+				for (let d = currentDist + 0.5; d < segEnd; d += OCTANT_LEN / 17) { placeRing(d); }
+			} 
+			else if (seg.light === 'stars') {
+				
+				const cellLength = 0.2; 
+				const angleSpan = Math.PI; 
+				
+				const starsPerRing = Math.floor((angleSpan * window.SLIDE_RAD) / cellLength); 
+				const angleStep = angleSpan / starsPerRing;
+				const jitterAmount = 0.8;
+
+				for (let d = currentDist; d < segEnd; d += cellLength) {
+					for (let i = 0; i < starsPerRing; i++) {
+						
+						const dOffset = (Math.random() - 0.5) * cellLength * jitterAmount;
+						const aOffset = (Math.random() - 0.5) * angleStep * jitterAmount;
+
+						const finalD = Math.max(currentDist, Math.min(segEnd, d + dOffset));
+						
+						
+						const baseAngle = i * angleStep; 
+						const finalAng = baseAngle + aOffset;
+
+						
+						const centerPos = mainPath.getPointAt(finalD / totalLen);
+						const finalPos = getPointOnSlide(finalD, finalAng, 0.022);
+
+						
+						const square = new THREE.Mesh(squareGeoPre, orangeMat);
+						square.position.copy(finalPos); 
+						square.lookAt(centerPos);
+						square.rotateZ(Math.random() * Math.PI);
+						slideGroup.add(square);
+
+						
+						const redDot = new THREE.Mesh(dotGeoPre, redMatDot);
+						
+						redDot.position.copy(getPointOnSlide(finalD, finalAng, 0.025));
+						redDot.lookAt(centerPos); 
+						redDot.userData = { rnd: Math.random() * 25 };
+						starPoints.push(redDot); 
+						slideGroup.add(redDot);
+					}
+				}
+			}
+
+			else if (seg.light === 'dots') {
+				for (let d = currentDist + 0.5; d < segEnd; d += 1.0) {
+					const centerPos = mainPath.getPointAt(d / totalLen);
+					const finalPos = getPointOnSlide(d, Math.PI / 2, 0.022); 
+
+					const bgDot = new THREE.Mesh(new THREE.CircleGeometry(0.06, 16), orangeMat);
+					bgDot.position.copy(finalPos); 
+					bgDot.lookAt(centerPos); 
+					slideGroup.add(bgDot);
+
+					const whiteDot = new THREE.Mesh(new THREE.CircleGeometry(0.04, 16), whiteMatPure);
+					whiteDot.position.copy(getPointOnSlide(d, Math.PI / 2, 0.025)); 
+					whiteDot.lookAt(centerPos);
+					whiteDots.push(whiteDot); 
+					slideGroup.add(whiteDot);
+				}
+			}
+			else if (seg.light === 'floor_run') {
+				for (let d = currentDist + 1.0; d < segEnd; d += 0.8) {
+					const centerPos = mainPath.getPointAt(d / totalLen);
+					const T = mainPath.getTangentAt(d / totalLen).normalize();
+					const finalPos = getPointOnSlide(d, -Math.PI / 2, 0.020); 
+
+					const bgMesh = new THREE.Mesh(new THREE.PlaneGeometry(0.25, 0.6), orangeMat);
+					bgMesh.position.copy(finalPos); 
+					bgMesh.up.copy(T); 
+					bgMesh.lookAt(centerPos); 
+					slideGroup.add(bgMesh);
+
+					const fgMesh = new THREE.Mesh(new THREE.PlaneGeometry(0.18, 0.5), whiteMatPure);
+					fgMesh.position.copy(getPointOnSlide(d, -Math.PI / 2, 0.023)); 
+					fgMesh.up.copy(T); 
+					fgMesh.lookAt(centerPos);
+					fgMesh.userData = { dist: d }; 
+					floorLights.push(fgMesh); 
+					slideGroup.add(fgMesh);
+				}
+			}
+			else if (seg.light === 'center_tris') {
+				const centerDist = currentDist + (segLen / 2);
+				const t = centerDist / totalLen;
+				const pos = mainPath.getPointAt(t);
+				const T = mainPath.getTangentAt(t).normalize();
+				const B = new THREE.Vector3().crossVectors(T, worldUp).normalize();
+				const N = new THREE.Vector3().crossVectors(B, T).normalize();
+
+				for (let i = 0; i < 10; i++) {
+					const ang = (i / 10) * Math.PI * 2;
+					
+					
+					const off = getPointOnSlide(centerDist, ang, 0.035).sub(pos);
+					
+					for (let dir = -1; dir <= 1; dir += 2) {
+						const posOffset = pos.clone().add(T.clone().multiplyScalar(dir * 0.01));
+						const bgMesh = new THREE.Mesh(triGeoOuterPre, orangeMat);
+						bgMesh.position.copy(posOffset).add(off); bgMesh.up.copy(dir === 1 ? T : T.clone().negate()); bgMesh.lookAt(posOffset); slideGroup.add(bgMesh);
+						
+						const fgMesh = new THREE.Mesh(triGeoInnerPre, whiteMatPure);
+						fgMesh.position.copy(posOffset).add(off.clone().multiplyScalar(0.99)); 
+						fgMesh.up.copy(dir === 1 ? T : T.clone().negate()); fgMesh.lookAt(posOffset);
+						fgMesh.translateY(0.04); fgMesh.userData = { index: i }; 
+						centerTriangles.push(fgMesh); slideGroup.add(fgMesh);
+					}
+				}
+			}
+			else if (seg.light === 'stars2') {
+				let rowCount = 0;
+				for (let d = currentDist; d < segEnd; d += 0.15) {
+					
+					for (let a = 0.2; a <= Math.PI - 0.2; a += Math.PI / 8) {
+						const ang = a + ((rowCount % 2 === 0) ? 0 : 0.1); 
+						
+						const offBG = getPointOnSlide(d, ang, 0.020);
+						
+						const offStar = getPointOnSlide(d, ang, 0.025);
+						
+						const bgStar = new THREE.Mesh(starGeoOuterPre, orangeMat);
+						bgStar.position.copy(offBG); bgStar.lookAt(mainPath.getPointAt(d/totalLen));
+						slideGroup.add(bgStar);
+
+						const innerStar = new THREE.Mesh(starGeoInnerPre, new THREE.MeshBasicMaterial({ color: 0xffffff, side: THREE.DoubleSide }));
+						innerStar.position.copy(offStar); innerStar.lookAt(mainPath.getPointAt(d/totalLen));
+						innerStar.userData = { phase: Math.random() * 10, posIndex: rowCount };
+						star2Points.push(innerStar); slideGroup.add(innerStar);
+					}
+					rowCount++;
+				}
+			}
+			else if (seg.light === 'strips') {
+				for (let d = currentDist + 0.6; d < segEnd; d += 0.6) {
+					const t = d / totalLen;
+					const pos = mainPath.getPointAt(t);
+					const T = mainPath.getTangentAt(t).normalize();
+					for (let i = 0; i < 14; i++) {
+						const ang = (i / 14) * Math.PI * 2;
+						
+						
+						const posBG = getPointOnSlide(d, ang, 0.020);  
+						const posLED = getPointOnSlide(d, ang, 0.025); 
+
+						const bgStrip = new THREE.Mesh(new THREE.PlaneGeometry(0.03, 0.4), orangeMat);
+						bgStrip.position.copy(posBG); 
+						bgStrip.up.copy(T); 
+						bgStrip.lookAt(pos); 
+						slideGroup.add(bgStrip);
+						
+						const led = new THREE.Mesh(new THREE.PlaneGeometry(0.015, 0.36), new THREE.MeshBasicMaterial({ color: 0xffffff, side: THREE.DoubleSide }));
+						led.position.copy(posLED); 
+						led.up.copy(T); 
+						led.lookAt(pos);
+						
+						led.userData = { lineIdx: i, distIdx: d }; 
+						stripLeds.push(led); 
+						slideGroup.add(led);
+					}
+				}
+			}
+			else if (seg.light === 'center_tris' && seg.type === 'straight') {
+				const centerDist = currentDist + (segLen / 2);
+				const t = centerDist / totalLen;
+				const pos = mainPath.getPointAt(t);
+				const T = mainPath.getTangentAt(t).normalize();
+				const B = new THREE.Vector3().crossVectors(T, worldUp).normalize();
+				const N = new THREE.Vector3().crossVectors(B, T).normalize();
+
+				for (let i = 0; i < 10; i++) {
+					const ang = (i / 10) * Math.PI * 2;
+					
+					
+					const off = getPointOnSlide(centerDist, ang, 0.035).sub(pos);
+					
+					for (let dir = -1; dir <= 1; dir += 2) {
+						const posOffset = pos.clone().add(T.clone().multiplyScalar(dir * 0.01));
+						const bgMesh = new THREE.Mesh(triGeoOuterPre, orangeMat);
+						bgMesh.position.copy(posOffset).add(off); bgMesh.up.copy(dir === 1 ? T : T.clone().negate()); bgMesh.lookAt(posOffset); slideGroup.add(bgMesh);
+						
+						const fgMesh = new THREE.Mesh(triGeoInnerPre, whiteMatPure);
+						fgMesh.position.copy(posOffset).add(off.clone().multiplyScalar(0.99)); 
+						fgMesh.up.copy(dir === 1 ? T : T.clone().negate()); fgMesh.lookAt(posOffset);
+						fgMesh.translateY(0.04); fgMesh.userData = { index: i }; 
+						centerTriangles.push(fgMesh); slideGroup.add(fgMesh);
+					}
+				}
+			}
+			else if ((seg.light === 'turn_circles' || seg.light === 'turn_droplets') && seg.type === 'turn') {
+				const isDrop = (seg.light === 'turn_droplets');
+				const angleStep = Math.PI / 6; 
+				const totalTurnRad = (seg.angle * Math.PI) / 180;
+				const angleBuffer = 0.4 / seg.radius;
+				for (let a = angleStep; a <= totalTurnRad - angleBuffer; a += angleStep) {
+					const d = currentDist + (a * seg.radius);
+					
+					const sides = [Math.PI / 4, 3 * Math.PI / 4];
+					
+					sides.forEach(sideCenterAngle => {
+						if (isDrop) {
+							
+							for (let rScale = 0.1; rScale <= 0.3; rScale += 0.05) {
+								const ringPoints = [];
+								for (let i = 0; i <= 20; i++) {
+									const theta = (i / 20) * Math.PI * 2;
+									let lx = Math.cos(theta) * rScale;
+									let ly = Math.sin(theta) * rScale;
+									
+									if (ly > 0) lx *= (1 - ly/0.6); 
+									ringPoints.push(getPointOnSlide(d + lx, sideCenterAngle + (ly / window.SLIDE_RAD), 0.01));
+								}
+								const curve = new THREE.CatmullRomCurve3(ringPoints);
+								slideGroup.add(new THREE.Mesh(new THREE.TubeGeometry(curve, 20, 0.02, 6, true), orangeBaseMat));
+							}
+							
+							const l = new THREE.Mesh(new THREE.SphereGeometry(0.025, 8, 8), whiteMat);
+							l.position.copy(getPointOnSlide(d, sideCenterAngle, 0.025));
+							turnLeds.push(l); slideGroup.add(l);
+
+						} else {
+							
+							const ringPoints = [];
+							const radius = 0.375;
+							for (let i = 0; i <= 32; i++) {
+								const theta = (i / 32) * Math.PI * 2;
+								const lx = Math.cos(theta) * radius;
+								const ly = Math.sin(theta) * radius;
+								ringPoints.push(getPointOnSlide(d + lx, sideCenterAngle + (ly / window.SLIDE_RAD), 0.01));
+							}
+							const ringCurve = new THREE.CatmullRomCurve3(ringPoints);
+							slideGroup.add(new THREE.Mesh(new THREE.TubeGeometry(ringCurve, 40, 0.015, 8, true), orangeBaseMat));
+
+							for (let i = 0; i < 8; i++) {
+								const theta = (i / 8) * Math.PI * 2;
+								const lp = getPointOnSlide(d + Math.cos(theta)*radius, sideCenterAngle + (Math.sin(theta)*radius/window.SLIDE_RAD), 0.02);
+								const l = new THREE.Mesh(new THREE.SphereGeometry(0.018, 8, 8), whiteMat);
+								l.position.copy(lp);
+								turnLeds.push(l); slideGroup.add(l);
+							}
+						}
+					});
+				}
+			}
+			else if (seg.light === 'zigzag') {
+				const orangePoints = [];
+				const whitePoints = [];
+				const step = 0.1;
+				for (let d = currentDist; d <= segEnd; d += step) {
+					const waveAngle = (Math.PI / 2) + Math.sin(d * 6) * 0.22; 
+					orangePoints.push(getPointOnSlide(d, waveAngle, 0.020));
+					whitePoints.push(getPointOnSlide(d, waveAngle, 0.025));
+				}
+				
+				if (orangePoints.length > 1) {
+					const orangeCurve = new THREE.CatmullRomCurve3(orangePoints);
+					const whiteCurve = new THREE.CatmullRomCurve3(whitePoints);
+					slideGroup.add(new THREE.Mesh(new THREE.TubeGeometry(orangeCurve, orangePoints.length * 2, 0.04, 8, false), orangeBaseMat));
+					
+					slideGroup.add(new THREE.Mesh(new THREE.TubeGeometry(whiteCurve, whitePoints.length * 2, 0.015, 8, false), new THREE.MeshBasicMaterial({ color: 0xffffff })));
+				}
+			}
+			else if (seg.light === 'text' && seg.type === 'straight') {
+				const canvas = document.createElement('canvas');
+				canvas.width = 1024; canvas.height = 256;
+				const ctx = canvas.getContext('2d');
+				ctx.fillStyle = '#ff7700'; ctx.fillRect(0, 0, 1024, 256);
+				ctx.fillStyle = 'white'; ctx.font = 'bold 120px Arial';
+				ctx.textAlign = 'center'; ctx.textBaseline = 'middle';
+				ctx.fillText('BLACK HOLE', 512, 128);
+				
+				const tex = new THREE.CanvasTexture(canvas);
+				const arcSpan = 0.8; 
+				
+				const textGeo = new THREE.CylinderGeometry(window.SLIDE_RAD - 0.02, window.SLIDE_RAD - 0.02, seg.len * 0.7, 32, 1, true, -arcSpan/2, arcSpan);
+				const textMat = new THREE.MeshBasicMaterial({ map: tex, side: THREE.DoubleSide, transparent: true });
+				const textMesh = new THREE.Mesh(textGeo, textMat);
+				
+				const t = (currentDist + segLen / 2) / totalLen;
+				const fIdx = Math.min(Math.floor(t * (frames.normals.length - 1)), frames.normals.length - 1);
+				textMesh.position.copy(mainPath.getPointAt(t));
+				textMesh.quaternion.setFromUnitVectors(new THREE.Vector3(0, 1, 0), frames.tangents[fIdx]);
+				textMesh.rotateX(Math.PI / 2); 
+				textMesh.rotateY(Math.PI); 
+				slideGroup.add(textMesh);
+			}
+			else if (seg.light === 'led_displays') {
+				const isShortStraight = (seg.type === 'straight' && seg.len < 4);
+				const distStep = 2.5; 
+
+				for (let d = currentDist + 1.2; d < segEnd; d += distStep) {
+					const angles = isShortStraight ? [Math.PI / 2] : [Math.PI / 4, 3 * Math.PI / 4];
+
+					angles.forEach((baseAngle, sideIdx) => {
+						
+						const canvas = document.createElement('canvas');
+						canvas.width = 512; canvas.height = 512;
+						const ctx = canvas.getContext('2d');
+						const texture = new THREE.CanvasTexture(canvas);
+						
+						
+						const mat = new THREE.MeshBasicMaterial({ map: texture, transparent: true, side: THREE.DoubleSide });
+						
+						
+						const geo = displayGeoBase.clone();
+						const posAttr = geo.attributes.position;
+						for (let i = 0; i < posAttr.count; i++) {
+							const lx = posAttr.getX(i); 
+							const ly = posAttr.getY(i); 
+							
+							
+							const bentPos = getPointOnSlide(d + lx, baseAngle - (ly / window.SLIDE_RAD), 0.018);
+							posAttr.setXYZ(i, bentPos.x, bentPos.y, bentPos.z);
+						}
+						geo.computeVertexNormals();
+
+						const mesh = new THREE.Mesh(geo, mat);
+						let pType = (seg.type === 'turn') ? 'star' : (Math.random() > 0.4 ? 'coil' : 'smiley');
+						
+						mesh.userData = { 
+							canvas: canvas, ctx: ctx, texture: texture, 
+							patternType: pType, offset: d + sideIdx 
+						};
+						
+						imageDisplays.push(mesh);
+						slideGroup.add(mesh);
+					});
+				}
+			}
+			else if (seg.light === 'jumpscare') {
+				const triggerDist = currentDist + segLen / 2;
+				const dotGeo = new THREE.CircleGeometry(0.02, 16);
+				const dotMat = new THREE.MeshBasicMaterial({ color: 0xffffff, side: THREE.DoubleSide });
+				
+				
+				[-2.4, 2.4].forEach(ang => {
+					const p = getPointOnSlide(triggerDist, ang, 0.005);
+					const dot = new THREE.Mesh(dotGeo, dotMat);
+					dot.position.copy(p);
+					
+					
+					const centerPos = getPointOnSlide(triggerDist, ang, window.SLIDE_RAD);
+					dot.lookAt(centerPos);
+					
+					slideGroup.add(dot);
+				});
+
+				jumpscares.push({ dist: triggerDist, triggered: false });
+			}
+			else if (seg.light === 'water_curtain') {
+				const d = currentDist + segLen / 2;
+				const t = d / totalLen;
+				const pos = mainPath.getPointAt(t);
+				const T = mainPath.getTangentAt(t).normalize();
+
+				const canvas = document.createElement('canvas');
+				canvas.width = 512; canvas.height = 512;
+				const ctx = canvas.getContext('2d');
+				const texture = new THREE.CanvasTexture(canvas);
+
+				const mat = new THREE.MeshBasicMaterial({ 
+					map: texture, 
+					transparent: true, 
+					opacity: 0.80, 
+					side: THREE.DoubleSide,
+					depthWrite: true 
+				});
+
+				
+				const curtainShape = new THREE.Shape();
+				const steps = 40;
+				const props = getSlideProps(d);
+				const rCurtain = (props.diameter / 2) - 0.015; // egy picit kisebb a belső héjnál, hogy ne lógjon ki
+				
+				for (let i = 0; i <= steps; i++) {
+					const ang = (i / steps) * Math.PI * 2;
+					const p1 = getShapeXY(props.shape1, rCurtain, ang);
+					const p2 = getShapeXY(props.shape2, rCurtain, ang);
+					const lx = p1.x * (1 - props.t) + p2.x * props.t;
+					const ly = p1.y * (1 - props.t) + p2.y * props.t;
+					
+					if (i === 0) curtainShape.moveTo(lx, ly);
+					else curtainShape.lineTo(lx, ly);
+				}
+				const geo = new THREE.ShapeGeometry(curtainShape);
+				const posAttr = geo.attributes.position;
+				const uvAttr = geo.attributes.uv;
+				
+				// Megkeressük a legtávolabbi pontot a középponttól a torzulásmentes skálázáshoz
+				let maxDist = 0;
+				for (let i = 0; i < posAttr.count; i++) {
+					const x = posAttr.getX(i);
+					const y = posAttr.getY(i);
+					const dist = Math.sqrt(x * x + y * y);
+					if (dist > maxDist) maxDist = dist;
+				}
+				if (maxDist === 0) maxDist = 1;
+
+				// UV koordináták felülírása: a (0,0) pont pontosan a (0.5, 0.5) textúra-középpontra esik
+				for (let i = 0; i < posAttr.count; i++) {
+					const x = posAttr.getX(i);
+					const y = posAttr.getY(i);
+					
+					const u = (x / (2 * maxDist)) + 0.5;
+					const v = (y / (2 * maxDist)) + 0.5;
+					
+					uvAttr.setXY(i, u, v);
+				}
+				uvAttr.needsUpdate = true;
+
+				const mesh = new THREE.Mesh(geo, mat);
+				
+				mesh.position.copy(pos);
+				mesh.lookAt(pos.clone().sub(T)); 
+				
+				const imageUrls = [
+					"https://threejs.org/examples/textures/brick_diffuse.jpg"
+				];
+				
+				const loadedImages = [];
+				imageUrls.forEach(url => {
+					const img = new Image();
+					img.crossOrigin = "Anonymous";
+					img.src = url;
+					loadedImages.push(img);
+				});
+
+				mesh.userData = { 
+					canvas: canvas, ctx: ctx, texture: texture, 
+					images: loadedImages,
+					imgIdx: 0,
+					lastSwitch: 0,
+					waterY: 0 
+				};
+
+				waterCurtains.push(mesh);
+				slideGroup.add(mesh);
+			}
+
+			currentDist = segEnd;
+		});
+
+		
+		if (bgPositions.length > 0) {
+			const bgGeom = new THREE.BufferGeometry();
+			bgGeom.setAttribute('position', new THREE.Float32BufferAttribute(bgPositions, 3));
+			bgGeom.setIndex(bgIndices);
+			bgGeom.computeVertexNormals();
+			slideGroup.add(new THREE.Mesh(bgGeom, orangeMat));
+		}
+	}
+	
+	function setAllLEDs(state) {
+        for (let r = 0; r < allRings.length; r++) {
+            
+            if (allRings[r]) {
+                for (let l = 0; l < allRings[r].length; l++) {
+                    allRings[r][l].visible = state;
+                }
+            }
+        }
+    }
+
+	const ledSteps = {
+        
+        1: [
+            { cycles: 4, timePerCycle: 1.0, update: (cp) => {
+                setAllLEDs(false); let limit = Math.floor(cp * 16);
+                for(let r=0; r<allRings.length; r++) for(let l=0; l<limit; l++) { allRings[r][l].visible = true; allRings[r][16+l].visible = true; }
+            }},
+            { cycles: 4, timePerCycle: 1.0, update: (cp) => {
+                setAllLEDs(false); let eraseLimit = Math.floor(cp * 16);
+                for(let r=0; r<allRings.length; r++) for(let l=0; l<16; l++) if (l <= 15 - eraseLimit) { allRings[r][l].visible = true; allRings[r][16+l].visible = true; }
+            }},
+            { cycles: 4, timePerCycle: 2.0, update: (cp) => {
+                setAllLEDs(false);
+                if (cp < 0.5) { 
+                    let limit = Math.floor((cp / 0.5) * 16);
+                    for(let r=0; r<allRings.length; r++) for(let l=0; l<limit; l++) { allRings[r][l].visible = true; allRings[r][16+l].visible = true; }
+                } else { 
+                    let eraseLimit = Math.floor(((cp - 0.5) / 0.5) * 16);
+                    for(let r=0; r<allRings.length; r++) for(let l=0; l<16; l++) if (l <= 15 - eraseLimit) { allRings[r][l].visible = true; allRings[r][16+l].visible = true; }
+                }
+            }}
+        ],
+        2: [
+            { cycles: 4, timePerCycle: 1.5, update: (cp) => {
+                setAllLEDs(false); let offset = Math.floor(cp * 32);
+                for(let r=0; r<allRings.length; r++) for(let l=0; l<32; l++) if (((l - offset + 320) % 32) % 4 === 0) allRings[r][l].visible = true;
+            }},
+            { cycles: 4, timePerCycle: 1.5, update: (cp) => {
+                setAllLEDs(false); let offset = Math.floor(-cp * 32);
+                for(let r=0; r<allRings.length; r++) for(let l=0; l<32; l++) if (((l - offset + 320) % 32) % 4 === 0) allRings[r][l].visible = true;
+            }},
+            { cycles: 4, timePerCycle: 1.5, update: (cp) => {
+                setAllLEDs(false); let offset = Math.floor(Math.sin(cp * Math.PI * 2) * 4);
+                for(let r=0; r<allRings.length; r++) for(let l=0; l<32; l++) if (((l - offset + 320) % 32) % 4 === 0) allRings[r][l].visible = true;
+            }}
+        ],
+        3: [
+            { cycles: 4, timePerCycle: 0.8, update: (cp) => { 
+                setAllLEDs(false); let limit = Math.floor(cp * 8);
+                for(let r=0; r<allRings.length; r++) if ((r % 8) >= 8 - limit) for(let l=0; l<32; l++) allRings[r][l].visible = true;
+            }},
+            { cycles: 4, timePerCycle: 0.8, update: (cp) => { 
+                setAllLEDs(false); let limit = Math.floor(cp * 8);
+                for(let r=0; r<allRings.length; r++) if ((r % 8) >= limit) for(let l=0; l<32; l++) allRings[r][l].visible = true;
+            }},
+            { cycles: 4, timePerCycle: 1.6, update: (cp) => {
+                setAllLEDs(false);
+                if (cp < 0.5) {
+                    let limit = Math.floor((cp / 0.5) * 8);
+                    for(let r=0; r<allRings.length; r++) if ((r % 8) >= 8 - limit) for(let l=0; l<32; l++) allRings[r][l].visible = true;
+                } else {
+                    let eraseLimit = Math.floor(((cp - 0.5) / 0.5) * 8);
+                    for(let r=0; r<allRings.length; r++) if ((r % 8) >= eraseLimit) for(let l=0; l<32; l++) allRings[r][l].visible = true;
+                }
+            }}
+        ],
+        4: [
+            { cycles: 4, timePerCycle: 0.8, update: (cp) => {
+                setAllLEDs(false); let offset = Math.floor(cp * 8);
+                for(let r=0; r<allRings.length; r++) if ((r - offset + 800) % 8 < 2) for(let l=0; l<32; l++) allRings[r][l].visible = true;
+            }},
+            { cycles: 4, timePerCycle: 0.8, update: (cp) => {
+                setAllLEDs(false); let offset = Math.floor(-cp * 8);
+                for(let r=0; r<allRings.length; r++) if ((r - offset + 800) % 8 < 2) for(let l=0; l<32; l++) allRings[r][l].visible = true;
+            }},
+            { cycles: 4, timePerCycle: 0.8, update: (cp) => {
+                setAllLEDs(false); let offset = Math.floor(Math.sin(cp * Math.PI * 2) * 8);
+                for(let r=0; r<allRings.length; r++) if ((r - offset + 800) % 8 < 2) for(let l=0; l<32; l++) allRings[r][l].visible = true;
+            }}
+        ],
+        6: [
+            { cycles: 1, timePerCycle: 4.0, update: (cp) => {
+                setAllLEDs(false); let offset = Math.floor(-cp * 16);
+                for(let r=0; r<allRings.length; r++) if ((r - offset + 800) % 4 === 0) for(let l=0; l<32; l++) allRings[r][l].visible = true;
+            }},
+            { cycles: 1, timePerCycle: 4.0, update: (cp) => {
+                setAllLEDs(false); let offset = Math.floor(cp * 16);
+                for(let r=0; r<allRings.length; r++) if ((r - offset + 800) % 4 === 0) for(let l=0; l<32; l++) allRings[r][l].visible = true;
+            }},
+            { cycles: 4, timePerCycle: 1.5, update: (cp) => {
+                setAllLEDs(false); let offset = Math.floor(Math.sin(cp * Math.PI * 2) * 4);
+                for(let r=0; r<allRings.length; r++) if ((r - offset + 800) % 4 === 0) for(let l=0; l<32; l++) allRings[r][l].visible = true;
+            }}
+        ],
+        7: [
+            { cycles: 4, timePerCycle: 1.5, update: (cp) => {
+                setAllLEDs(false); let rOff = Math.floor(cp * 8), lOff = Math.floor(-cp * 8);
+                for(let r=0; r<allRings.length; r++) if ((r - rOff + 800) % 8 < 2) for(let l=0; l<32; l++) if ((l - lOff + 320) % 8 < 2) allRings[r][l].visible = true;
+            }},
+            { cycles: 4, timePerCycle: 1.5, update: (cp) => {
+                setAllLEDs(false); let rOff = Math.floor(-cp * 8), lOff = Math.floor(cp * 8);
+                for(let r=0; r<allRings.length; r++) if ((r - rOff + 800) % 8 < 2) for(let l=0; l<32; l++) if ((l - lOff + 320) % 8 < 2) allRings[r][l].visible = true;
+            }},
+            { cycles: 4, timePerCycle: 1.5, update: (cp) => {
+                setAllLEDs(false); let rOff = Math.floor(Math.sin(cp * Math.PI * 2) * 8), lOff = Math.floor(-Math.sin(cp * Math.PI * 2) * 8);
+                for(let r=0; r<allRings.length; r++) if ((r - rOff + 800) % 8 < 2) for(let l=0; l<32; l++) if ((l - lOff + 320) % 8 < 2) allRings[r][l].visible = true;
+            }}
+        ],
+        8: [
+            { cycles: 4, timePerCycle: 1.0, update: (cp) => {
+                setAllLEDs(false); let limit = Math.floor(cp * 16);
+                for(let r=0; r<allRings.length; r++) for(let l=0; l<limit; l++) { allRings[r][l].visible = true; allRings[r][16+l].visible = true; }
+            }},
+            { cycles: 4, timePerCycle: 1.0, update: (cp) => { 
+                setAllLEDs(false); let eraseLimit = Math.floor(cp * 16);
+                for(let r=0; r<allRings.length; r++) for(let l=0; l<16; l++) if (l <= 15 - eraseLimit) { allRings[r][l].visible = true; allRings[r][16+l].visible = true; }
+            }},
+            { cycles: 4, timePerCycle: 2.0, update: (cp) => {
+                setAllLEDs(false);
+                if (cp < 0.5) { 
+                    let limit = Math.floor((cp / 0.5) * 16);
+                    for(let r=0; r<allRings.length; r++) for(let l=0; l<limit; l++) { allRings[r][l].visible = true; allRings[r][16+l].visible = true; }
+                } else { 
+                    let eraseLimit = Math.floor(((cp - 0.5) / 0.5) * 16);
+                    for(let r=0; r<allRings.length; r++) for(let l=0; l<16; l++) if (l >= eraseLimit) { allRings[r][l].visible = true; allRings[r][16+l].visible = true; }
+                }
+            }}
+        ],
+        9: [
+            { cycles: 4, timePerCycle: 1.0, update: (cp) => {
+                setAllLEDs(false); let offset = Math.floor(cp * 16);
+                for(let r=0; r<allRings.length; r++) for(let l=0; l<32; l++) if ((l - offset + 320) % 16 < 2) allRings[r][l].visible = true;
+            }},
+            { cycles: 4, timePerCycle: 1.0, update: (cp) => {
+                setAllLEDs(false); let offset = Math.floor(-cp * 16);
+                for(let r=0; r<allRings.length; r++) for(let l=0; l<32; l++) if ((l - offset + 320) % 16 < 2) allRings[r][l].visible = true;
+            }},
+            { cycles: 4, timePerCycle: 1.0, update: (cp) => {
+                setAllLEDs(false); let offset = Math.floor(Math.sin(cp * Math.PI * 2) * 8);
+                for(let r=0; r<allRings.length; r++) for(let l=0; l<32; l++) if ((l - offset + 320) % 16 < 2) allRings[r][l].visible = true;
+            }}
+        ],
+
+        
+
+        10: [ 
+            { cycles: 4, timePerCycle: 1.5, update: (cp) => {
+                setAllLEDs(false); let shift = Math.floor(cp * 16);
+                for(let r=0; r<allRings.length; r++) for(let l=0; l<32; l++) {
+                    if (((l % 16) + (r % 8)*2 + shift) % 16 < 4) allRings[r][l].visible = true;
+                }
+            }},
+            { cycles: 4, timePerCycle: 1.5, update: (cp) => {
+                setAllLEDs(false); let shift = Math.floor(-cp * 16);
+                for(let r=0; r<allRings.length; r++) for(let l=0; l<32; l++) {
+                    if (((l % 16) + (r % 8)*2 + shift + 320) % 16 < 4) allRings[r][l].visible = true;
+                }
+            }},
+            { cycles: 4, timePerCycle: 1.5, update: (cp) => {
+                setAllLEDs(false); let shift = Math.floor(Math.sin(cp * Math.PI * 2) * 8);
+                for(let r=0; r<allRings.length; r++) for(let l=0; l<32; l++) {
+                    if (((l % 16) + (r % 8)*2 + shift + 320) % 16 < 4) allRings[r][l].visible = true;
+                }
+            }}
+        ],
+        11: [ 
+            { cycles: 4, timePerCycle: 2.0, update: (cp) => {
+                setAllLEDs(false); 
+                let rShift = Math.floor(cp * 8); let lShift = Math.floor(cp * 16);
+                for(let r=0; r<allRings.length; r++) for(let l=0; l<32; l++) {
+                    let rC = ((r + rShift + 800) % 8) < 4;
+                    let lC = ((l + lShift + 320) % 16) < 8;
+                    if (rC !== lC) allRings[r][l].visible = true; 
+                }
+            }},
+            { cycles: 4, timePerCycle: 2.0, update: (cp) => {
+                setAllLEDs(false); 
+                let rShift = Math.floor(-cp * 8); let lShift = Math.floor(cp * 16); 
+                for(let r=0; r<allRings.length; r++) for(let l=0; l<32; l++) {
+                    let rC = ((r + rShift + 800) % 8) < 4;
+                    let lC = ((l + lShift + 320) % 16) < 8;
+                    if (rC !== lC) allRings[r][l].visible = true;
+                }
+            }}
+        ],
+        12: [ 
+            { cycles: 4, timePerCycle: 1.5, update: (cp) => {
+                setAllLEDs(false);
+                let maxDist = (cp < 0.5) ? cp * 2 * 14 : (1 - cp) * 2 * 14; 
+                for(let r=0; r<allRings.length; r++) for(let l=0; l<32; l++) {
+                    
+                    let d = Math.abs((r % 8) - 3.5)*2 + Math.abs((l % 16) - 7.5); 
+                    if (d < maxDist && d > maxDist - 4) allRings[r][l].visible = true; 
+                }
+            }}
+        ],
+        13: [ 
+            { cycles: 4, timePerCycle: 1.0, update: (cp) => {
+                setAllLEDs(false);
+                let rOff = Math.floor(cp * 8); let lOff = Math.floor(cp * 16);
+                for(let r=0; r<allRings.length; r++) for(let l=0; l<32; l++) {
+                    if (((r - rOff + 800) % 8 < 3) && ((l - lOff + 320) % 16 < 2)) allRings[r][l].visible = true;
+                }
+            }},
+            { cycles: 4, timePerCycle: 1.0, update: (cp) => {
+                setAllLEDs(false);
+                let rOff = Math.floor(-cp * 8); let lOff = Math.floor(cp * 16); 
+                for(let r=0; r<allRings.length; r++) for(let l=0; l<32; l++) {
+                    if (((r - rOff + 800) % 8 < 3) && ((l - lOff + 320) % 16 < 2)) allRings[r][l].visible = true;
+                }
+            }}
+        ],
+        14: [ 
+            { cycles: 4, timePerCycle: 2.0, update: (cp) => {
+                setAllLEDs(false);
+                let rOff = Math.floor(cp * 8);
+                for(let r=0; r<allRings.length; r++) {
+                    
+                    let sinePos = Math.floor(Math.sin(((r + rOff) % 8) / 8 * Math.PI * 2) * 5) + 7; 
+                    for(let l=0; l<32; l++) {
+                        if (Math.abs((l % 16) - sinePos) <= 1) allRings[r][l].visible = true; 
+                    }
+                }
+            }},
+            { cycles: 4, timePerCycle: 2.0, update: (cp) => {
+                setAllLEDs(false);
+                let rOff = Math.floor(-cp * 8); 
+                for(let r=0; r<allRings.length; r++) {
+                    let sinePos = Math.floor(Math.sin(((r + rOff) % 8) / 8 * Math.PI * 2) * 5) + 7; 
+                    for(let l=0; l<32; l++) {
+                        if (Math.abs((l % 16) - sinePos) <= 1) allRings[r][l].visible = true;
+                    }
+                }
+            }}
+        ],
+        15: [ 
+            { cycles: 6, timePerCycle: 1.2, update: (cp) => {
+                setAllLEDs(false);
+                let prog = Math.floor(cp * 8); 
+                for(let r=0; r<allRings.length; r++) for(let l=0; l<32; l++) {
+                    
+                    let rDist = Math.min(r % 8, 7 - (r % 8)); 
+                    let lDist = Math.min(l % 16, 15 - (l % 16)); 
+                    
+                    
+                    if (rDist === Math.floor(prog / 2) || lDist === prog) allRings[r][l].visible = true;
+                }
+            }}
+        ],
+		
+
+        16: [ 
+            { cycles: 4, timePerCycle: 1.0, update: (cp) => {
+                setAllLEDs(false); let a = Math.floor(cp * 16);
+                for(let r=0; r<allRings.length; r++) for(let l=0; l<32; l++) {
+                    if ((l - a + 320) % 16 < 3) allRings[r][l].visible = true;
+                }
+            }},
+            { cycles: 4, timePerCycle: 1.0, update: (cp) => {
+                setAllLEDs(false); let a = Math.floor(-cp * 16);
+                for(let r=0; r<allRings.length; r++) for(let l=0; l<32; l++) {
+                    if ((l - a + 320) % 16 < 3) allRings[r][l].visible = true;
+                }
+            }}
+        ],
+        17: [ 
+            { cycles: 6, timePerCycle: 0.8, update: (cp) => {
+                setAllLEDs(false); let dist = Math.floor(Math.sin(cp * Math.PI) * 4.5); 
+                for(let r=0; r<allRings.length; r++) {
+                    if (Math.floor(Math.abs((r % 8) - 3.5)) === dist) {
+                        for(let l=0; l<32; l++) allRings[r][l].visible = true;
+                    }
+                }
+            }}
+        ],
+        18: [ 
+            { cycles: 4, timePerCycle: 2.0, update: (cp) => {
+                setAllLEDs(false); let s = Math.floor(cp * 16);
+                for(let r=0; r<allRings.length; r++) for(let l=0; l<32; l++) {
+                    let d1 = (l + r * 2 + s) % 16;
+                    let d2 = (l - r * 2 - s + 320) % 16;
+                    if (d1 < 2 || d2 < 2) allRings[r][l].visible = true;
+                }
+            }}
+        ],
+        19: [ 
+            { cycles: 4, timePerCycle: 1.5, update: (cp) => {
+                setAllLEDs(false); let s = Math.floor(cp * 8);
+                for(let r=0; r<allRings.length; r++) for(let l=0; l<32; l++) {
+                    let col = Math.floor((l % 16) / 4); 
+                    
+                    if ((l % 16) % 4 < 2 && (r - s + col * 2 + 800) % 8 < 2) allRings[r][l].visible = true;
+                }
+            }}
+        ],
+        20: [ 
+            { cycles: 4, timePerCycle: 1.5, update: (cp) => {
+                setAllLEDs(false); 
+                let gap = Math.floor(Math.sin(cp * Math.PI) * 8); 
+                for(let r=0; r<allRings.length; r++) for(let l=0; l<32; l++) {
+                    let lDist = Math.min(l % 16, 16 - (l % 16)); 
+                    if (lDist > gap) allRings[r][l].visible = true;
+                }
+            }}
+        ],
+        21: [ 
+            { cycles: 4, timePerCycle: 1.5, update: (cp) => {
+                setAllLEDs(false); let s = Math.floor(cp * 16);
+                for(let r=0; r<allRings.length; r++) for(let l=0; l<32; l++) {
+                    let dir = (r % 8 < 4) ? 1 : -1; 
+                    if (((l + dir * s + 320) % 16) % 4 === 0) allRings[r][l].visible = true; 
+                }
+            }}
+        ],
+		        22: [ 
+            { cycles: 8, timePerCycle: 0.5, update: (cp) => {
+                setAllLEDs(false); let seed = Math.floor(cp * 10);
+                for(let r=0; r<allRings.length; r++) for(let l=0; l<32; l++) {
+                    
+                    if ((r * 7 + l * 13 + seed) % 17 < 3) allRings[r][l].visible = true;
+                }
+            }}
+        ],
+        23: [ 
+            { cycles: 4, timePerCycle: 1.5, update: (cp) => {
+                setAllLEDs(false);
+                let lPos = Math.floor(Math.abs(Math.sin(cp * Math.PI * 2)) * 14); 
+                let rPos = Math.floor(cp * 8); 
+                for(let r=0; r<allRings.length; r++) for(let l=0; l<32; l++) {
+                    if (Math.abs((r % 8) - rPos) < 2 && Math.abs((l % 16) - lPos) < 2) allRings[r][l].visible = true;
+                }
+            }}
+        ],
+        24: [ 
+            { cycles: 4, timePerCycle: 2.0, update: (cp) => {
+                setAllLEDs(false); let rShift = Math.floor(cp * 8); let lShift = Math.floor(-cp * 16);
+                for(let r=0; r<allRings.length; r++) for(let l=0; l<32; l++) {
+                    let isRow = (r + rShift + 800) % 8 < 2;
+                    let isCol = (l + lShift + 320) % 16 < 2;
+                    if (isRow || isCol) allRings[r][l].visible = true;
+                }
+            }}
+        ],
+        25: [ 
+            { cycles: 4, timePerCycle: 1.0, update: (cp) => {
+                setAllLEDs(false); let fwd = Math.floor(cp * 8); let bwd = Math.floor(-cp * 8);
+                for(let r=0; r<allRings.length; r++) for(let l=0; l<32; l++) {
+                    if (l % 16 < 8) { 
+                        if ((r - fwd + 800) % 8 < 3) allRings[r][l].visible = true;
+                    } else { 
+                        if ((r - bwd + 800) % 8 < 3) allRings[r][l].visible = true;
+                    }
+                }
+            }}
+        ],
+        26: [ 
+            { cycles: 4, timePerCycle: 1.0, update: (cp) => {
+                setAllLEDs(false); let drop = Math.floor(cp * 8);
+                for(let r=0; r<allRings.length; r++) for(let l=0; l<32; l++) {
+                    
+                    if ((r - drop + (l % 16) * 3 + 800) % 8 < 2) allRings[r][l].visible = true;
+                }
+            }}
+        ],
+        27: [ 
+            { cycles: 4, timePerCycle: 1.5, update: (cp) => {
+                setAllLEDs(false); let rOff = Math.floor(cp * 8);
+                for(let r=0; r<allRings.length; r++) {
+                    let s1 = Math.floor(Math.sin(((r + rOff) % 8) / 8 * Math.PI * 2) * 4) + 4; 
+                    let s2 = Math.floor(Math.sin(((r + rOff + 4) % 8) / 8 * Math.PI * 2) * 4) + 11; 
+                    for(let l=0; l<32; l++) {
+                        if (Math.abs((l % 16) - s1) <= 1 || Math.abs((l % 16) - s2) <= 1) allRings[r][l].visible = true;
+                    }
+                }
+            }}
+        ],
+        28: [ 
+            { cycles: 4, timePerCycle: 1.0, update: (cp) => {
+                setAllLEDs(false); let scan = Math.floor(cp * 8);
+                for(let r=0; r<allRings.length; r++) for(let l=0; l<32; l++) {
+                    if (cp > 0.9) allRings[r][l].visible = true; 
+                    else if ((r % 8) === scan) allRings[r][l].visible = true; 
+                }
+            }}
+        ],
+        29: [ 
+            { cycles: 2, timePerCycle: 2.0, update: (cp) => {
+                setAllLEDs(false); 
+                let fill = (cp < 0.5) ? Math.floor(cp * 2 * 8) : Math.floor((1 - cp) * 2 * 8); 
+                for(let r=0; r<allRings.length; r++) for(let l=0; l<32; l++) {
+                    let h = Math.min(l % 16, 16 - (l % 16)); 
+                    if (h < fill) allRings[r][l].visible = true;
+                }
+            }}
+        ],
+        30: [ 
+            { cycles: 16, timePerCycle: 0.2, update: (cp) => {
+                setAllLEDs(false);
+                let flip = (cp < 0.5) ? 0 : 1; 
+                for(let r=0; r<allRings.length; r++) for(let l=0; l<32; l++) {
+                    if (((Math.floor(r / 2) + flip) % 2) === 0) allRings[r][l].visible = true;
+                }
+            }}
+        ]
+    };
+    ledSteps[5] = ledSteps[3]; 
+
+    
+	
+    const sections = [ 
+        [1, 2], [3], [4], [5, 6], [7, 8, 9],
+        [10, 11], [12, 13], [14, 15], 
+        [16, 17], [18, 19], [20, 21],
+        [22, 23], [24, 25], [26, 27],
+        [28, 29, 30] 
+    ];
+    const animState = { sIdx: 0, stepInSIdx: 0, pIdx: 0, time: 0, paused: false, pauseTime: 0 };
+    const PAUSE_DUR = 0; 
+
+    function updateLedAnimation(delta) {
+        if (allRings.length === 0) return;
+
+        if (animState.paused) {
+            animState.pauseTime += delta;
+            setAllLEDs(false); 
+            if (animState.pauseTime >= PAUSE_DUR) { animState.paused = false; animState.pauseTime = 0; }
+            return;
+        }
+
+        const stepNum = sections[animState.sIdx][animState.stepInSIdx];
+        const phaseDef = ledSteps[stepNum][animState.pIdx];
+        
+        animState.time += delta;
+        const totalDur = phaseDef.cycles * phaseDef.timePerCycle;
+        const cp = (animState.time % phaseDef.timePerCycle) / phaseDef.timePerCycle;
+        
+        
+        const now = new Date();
+        const currentMins = now.getHours() * 60 + now.getMinutes();
+        const isFirstAnim = (animState.sIdx === 0);
+        
+        let forceAllOn = false;
+        let applyGlitch = false;
+        let glitchSeverity = 0;
+
+        if (currentMins >= 1440) { 
+            if (!isFirstAnim) forceAllOn = true;
+        } 
+        else if (currentMins >= 1380 && currentMins < 1440) { 
+            glitchSeverity = (currentMins - 1380) / 60; 
+            
+            if (!isFirstAnim) {
+                
+                if (Math.random() < (glitchSeverity * 0.6)) {
+                    forceAllOn = true;
+                } else {
+                    applyGlitch = true;
+                }
+            }
+        }
+
+        if (forceAllOn) {
+            setAllLEDs(true);
+        } else {
+            
+            phaseDef.update(cp);
+
+            
+            if (applyGlitch) {
+                for (let r = 0; r < allRings.length; r++) {
+                    
+                    if (allRings[r] && Math.random() < glitchSeverity) {
+                        for (let l = 0; l < allRings[r].length; l++) {
+                            
+                            if (Math.random() < 0.3) {
+                                allRings[r][l].visible = false;
+                            }
+                        }
+                    }
+                }
+            }
+        }
+        
+
+        if (animState.time >= totalDur) { 
+            animState.time = 0;
+            animState.pIdx++;
+            if (animState.pIdx >= ledSteps[stepNum].length) { 
+                animState.pIdx = 0;
+                animState.stepInSIdx++;
+                if (animState.stepInSIdx >= sections[animState.sIdx].length) { 
+                    animState.stepInSIdx = 0;
+                    
+                    if (isRandomOrder) {
+                        let nextIdx;
+                        do { 
+                            nextIdx = Math.floor(Math.random() * sections.length);
+                        } while (nextIdx === animState.sIdx && sections.length > 1);
+                        animState.sIdx = nextIdx;
+                    } else {
+                        animState.sIdx = (animState.sIdx + 1) % sections.length;
+                    }
+                    
+                    animState.paused = true;
+                }
+            }
+        }
+    }
+
+    
+    let progress = 0;
+    const clock = new THREE.Clock();
+	
+	
+    let isPaused = false;
+    const pauseBtn = document.getElementById('pauseBtn');
+    
+    pauseBtn.addEventListener('click', () => {
+        isPaused = !isPaused;
+        pauseBtn.innerText = isPaused ? "Kamera Folytatása" : "Kamera Megállítása";
+        pauseBtn.style.background = isPaused ? "#cc0000" : "#ff7700";
+    });
+
+    let isRandomOrder = false;
+    const modeBtn = document.getElementById('modeBtn');
+    modeBtn.addEventListener('click', () => {
+        isRandomOrder = !isRandomOrder;
+        modeBtn.innerText = isRandomOrder ? "Mód: Véletlen" : "Mód: Sorrendi";
+        modeBtn.style.background = isRandomOrder ? "#9900ff" : "#0088ff";
+    });
+
+	const viewBtn = document.getElementById('viewBtn');
+		controls = new OrbitControls(camera, renderer.domElement);
+		controls.enabled = false; 
+
+    function updateEnvironmentColor() {
+        const now = new Date();
+        
+        
+        const start = new Date(now.getFullYear(), 0, 0);
+        const diff = now - start;
+        const dayOfYear = Math.floor(diff / (1000 * 60 * 60 * 24));
+        
+        
+        const daysFromWinterSolstice = (dayOfYear + 10) % 365;
+        const swing = -Math.cos((daysFromWinterSolstice / 365) * Math.PI * 2); 
+        
+        
+        const sunrise = 6.125 - swing * 1.375; 
+        const sunset = 18.375 + swing * 2.375; 
+
+        const currentHour = now.getHours() + now.getMinutes() / 60;
+        let intensity = 0;
+
+        if (currentHour > sunrise && currentHour < sunset) {
+            
+            const dayProgress = (currentHour - sunrise) / (sunset - sunrise);
+            intensity = Math.sin(dayProgress * Math.PI);
+        }
+
+        
+        const r = Math.floor(255 * intensity);
+        const g = Math.floor(127 * intensity);
+        const b = 0;
+        
+        
+        orangeColor = (r << 16) | (g << 8) | b;
+        orangeMat.color.setHex(orangeColor);
+        orangeBaseMat.color.setHex(orangeColor);
+        floorBgMat.color.setHex(orangeColor);
+    }
+
+	function animate() {
+        requestAnimationFrame(animate);
+		updateEnvironmentColor();
+        if (!mainPath || !frames) return;
+
+        const delta = clock.getDelta();
+        const time = clock.getElapsedTime();
+
+        if (!isExternal) {
+            if (!isPaused) {
+                const currentSpeed = parseFloat(document.getElementById('moveSpeed').value) || 2.0;
+                
+                if (progress === 0 && currentSpeed > 0) {
+                    slideTime = 0;
+                    timerRunning = true;
+                }
+
+                progress += (currentSpeed * delta) / totalLen;
+
+                if (timerRunning) {
+                    slideTime += delta;
+                    let totalMs = Math.floor(slideTime * 1000);
+                    let ms = Math.floor((totalMs % 1000) / 10);
+                    let sec = Math.floor((totalMs / 1000) % 60);
+                    let min = Math.floor(totalMs / 60000);
+                    timerDisplay.innerText = 
+                        (min < 10 ? "0" + min : min) + ":" + 
+                        (sec < 10 ? "0" + sec : sec) + "." + 
+                        (ms < 10 ? "0" + ms : ms);
+                }
+
+                if (progress >= 1) {
+                    progress = 0;
+                    timerRunning = false;
+                }
+            }
+			
+            const t = progress;
+            const pos = mainPath.getPointAt(t);
+            const tangent = mainPath.getTangentAt(t).normalize();
+
+            
+            const worldUp = new THREE.Vector3(0, 1, 0);
+            const side = new THREE.Vector3().crossVectors(tangent, worldUp).normalize();
+            const up = new THREE.Vector3().crossVectors(side, tangent).normalize();
+
+            
+            const heightFromCenter = -window.SLIDE_RAD + 0.75;
+            
+            const cameraPos = pos.clone().add(up.clone().multiplyScalar(heightFromCenter));
+            camera.position.copy(cameraPos);
+            
+            
+            
+            const lookAheadDist = 2.0; 
+            const lookAheadT = Math.min(t + (lookAheadDist / totalLen), 1.0);
+            
+            const targetPos = mainPath.getPointAt(lookAheadT);
+            const targetTangent = mainPath.getTangentAt(lookAheadT).normalize();
+            
+            
+            const targetSide = new THREE.Vector3().crossVectors(targetTangent, worldUp).normalize();
+            const targetUp = new THREE.Vector3().crossVectors(targetSide, targetTangent).normalize();
+            
+            const lookAtPos = targetPos.add(targetUp.clone().multiplyScalar(heightFromCenter));
+            camera.lookAt(lookAtPos);
+            
+            
+           
+           
+        } else {
+            if (controls) controls.update();
+           
+           
+        }
+
+		
+		starPoints.forEach(s => s.visible = Math.sin(time * 6 + s.userData.rnd) > 0);
+		whiteDots.forEach(d => d.visible = Math.floor(time * 10) % 2 === 0);
+		star2Points.forEach(s => {
+			
+			const flash = Math.sin(time * 6 + s.userData.phase);
+			s.visible = flash > -0.2; 
+			
+			
+			const colorPhase = Math.floor(time / 1.5 + s.userData.posIndex * 0.2);
+			s.material.color.setHex(multiColors[colorPhase % 4]);
+		});
+
+		
+		stripLeds.forEach(s => {
+			
+			const timeFactor = time * 3.5;
+			const distFactor = s.userData.distIdx * 1.2;
+			const lineFactor = s.userData.lineIdx * 0.5;
+		
+			
+			const wave = Math.sin(time * 2 + s.userData.distIdx * 0.5);
+			const colorPhase = Math.floor(timeFactor + distFactor + lineFactor + wave);
+		
+			s.material.color.setHex(multiColors[colorPhase % 4]);
+		});
+		updateLedAnimation(delta);
+		renderer.render(scene, camera);
+		floorLights.forEach(f => {
+			
+			
+			const phase = ((f.userData.dist - time * 6.0) % 4.0 + 4.0) % 4.0;
+			
+			
+			f.visible = phase < 1.0; 
+		});
+		centerTriangles.forEach(t => {
+			
+			const wave = Math.sin(time * 8 + t.userData.index * (Math.PI / 5));
+			
+			
+			t.visible = wave > 0;
+		});
+		turnLeds.forEach((l, i) => l.visible = Math.floor(time * 10 + i) % 2 === 0);
+        zigzagLeds.forEach((l, i) => l.visible = (Math.floor(time * 5 + i) % 5 === 0));
+		imageDisplays.forEach(disp => {
+			const { canvas, ctx, texture, patternType, offset } = disp.userData;
+			const t_fast = time * 8 + offset;
+			const t_slow = time * 2 + offset;
+			
+			ctx.clearRect(0, 0, 512, 512);
+			ctx.strokeStyle = '#ff0000';
+			ctx.fillStyle = '#ff0000';
+			ctx.lineWidth = 12;
+			ctx.lineCap = 'round';
+			ctx.shadowBlur = 25;
+			ctx.shadowColor = '#ff0000';
+
+			if (patternType === 'smiley') {
+				ctx.beginPath(); ctx.arc(256, 256, 230, 0, Math.PI * 2); ctx.stroke();
+				ctx.beginPath(); ctx.arc(256, 260, 150, 0.2 * Math.PI, 0.8 * Math.PI); ctx.stroke();
+				if (Math.sin(t_slow * 3) < 0.9) {
+					ctx.beginPath(); ctx.arc(170, 180, 30, 0, Math.PI * 2); ctx.fill();
+					ctx.beginPath(); ctx.arc(342, 180, 30, 0, Math.PI * 2); ctx.fill();
+				} else {
+					ctx.fillRect(140, 175, 60, 10); ctx.fillRect(312, 175, 60, 10);
+				}
+
+			} else if (patternType === 'coil') {
+				
+				const modeSwitch = Math.floor(time / 4 + offset) % 2; 
+				ctx.save();
+				ctx.translate(256, 256);
+
+				if (modeSwitch === 0) {
+					
+					for (let i = 0; i < 3; i++) {
+						const r = 70 + i * 70;
+						const pulse = 0.6 + Math.sin(t_fast - i * 1.2) * 0.4;
+						ctx.globalAlpha = pulse;
+						ctx.beginPath(); ctx.arc(0, 0, r, 0, Math.PI * 2); ctx.stroke();
+					}
+				} else {
+					
+					ctx.rotate(t_fast * 0.2); 
+					const globalPulse = 1.0 + Math.sin(t_fast * 0.5) * 0.2; 
+					ctx.scale(globalPulse, globalPulse);
+
+					
+					for(let j=0; j<3; j++) { ctx.beginPath(); ctx.arc(0, 0, 15 + j*15, 0, Math.PI*2); ctx.stroke(); }
+
+					
+					for (let i = 0; i < 5; i++) {
+						const angle = (i / 5) * Math.PI * 2;
+						const x = Math.cos(angle) * 160;
+						const y = Math.sin(angle) * 160;
+						ctx.beginPath(); 
+						ctx.arc(x, y, 45, 0, Math.PI * 2); 
+						ctx.stroke();
+						ctx.beginPath(); 
+						ctx.arc(x, y, 25, 0, Math.PI * 2); 
+						ctx.stroke();
+					}
+				}
+				ctx.restore();
+				ctx.globalAlpha = 1.0;
+
+			} else if (patternType === 'star') {
+				
+				ctx.save();
+				ctx.translate(256, 256);
+				
+				
+				const glowScale = 1.2 + Math.sin(t_fast * 0.4) * 0.2;
+				ctx.globalAlpha = 0.3;
+				ctx.beginPath(); ctx.arc(0, 0, 180 * glowScale, 0, Math.PI * 2); ctx.fill();
+				ctx.globalAlpha = 1.0;
+
+				
+				ctx.save();
+				ctx.rotate(t_fast * 0.15);
+				drawStar(ctx, 5, 230, 90);
+				ctx.restore();
+
+				
+				ctx.save();
+				ctx.rotate(-t_fast * 0.4);
+				const innerPulse = 0.8 + Math.sin(t_fast) * 0.2;
+				ctx.scale(innerPulse, innerPulse);
+				ctx.fillStyle = '#ffffff'; 
+				drawStar(ctx, 5, 100, 40);
+				ctx.restore();
+				
+				ctx.restore();
+			}
+			
+			texture.needsUpdate = true;
+		});
+
+		
+		function drawStar(ctx, points, outer, inner) {
+			ctx.beginPath();
+			for (let i = 0; i < points * 2; i++) {
+				const r = (i % 2 === 0) ? outer : inner;
+				const a = (i * Math.PI) / points;
+				ctx.lineTo(Math.cos(a) * r, Math.sin(a) * r);
+			}
+			ctx.closePath();
+			ctx.fill();
+			ctx.stroke();
+		}
+		let strobeEndTime = 0;
+		const currentTravelDist = progress * totalLen;
+		jumpscares.forEach(js => {
+			if (!js.triggered && Math.abs(currentTravelDist - js.dist) < 0.2) {
+				js.triggered = true;
+				strobeEndTime = time + 1.2; 
+				playComplexRumble();
+				setTimeout(() => { js.triggered = false; }, 5000);
+			}
+		});
+
+		
+		if (time < strobeEndTime) {
+			
+			const isLit = Math.floor(time * 25) % 2 === 0;
+			
+			if (isLit) {
+				
+			
+			
+			
+				
+			
+			} else {
+				
+				
+				
+			}
+		} else {
+			
+		
+		
+		
+		
+		
+		}
+		waterCurtains.forEach(wc => {
+			const { canvas, ctx, texture, images } = wc.userData;
+			
+			if (time - wc.userData.lastSwitch > 25) { 
+				wc.userData.imgIdx = (wc.userData.imgIdx + 1) % images.length;
+				wc.userData.lastSwitch = time;
+			}
+
+			ctx.clearRect(0, 0, 512, 512);
+			
+			
+			ctx.fillStyle = 'rgba(5, 15, 25, 1.0)';
+			ctx.fillRect(0, 0, 512, 512);
+
+			const currentImg = images[wc.userData.imgIdx];
+
+			if (currentImg.complete && currentImg.naturalWidth !== 0) {
+				const scale = 512 / currentImg.naturalHeight;
+				const drawWidth = currentImg.naturalWidth * scale;
+				const drawX = (512 - drawWidth) / 2;
+				
+				ctx.drawImage(currentImg, drawX, 0, drawWidth, 512);
+			} else {
+				ctx.fillStyle = '#ffffff';
+				ctx.font = 'bold 40px Arial';
+				ctx.textAlign = 'center';
+				ctx.textBaseline = 'middle';
+				ctx.fillText("Kép betöltése...", 256, 256);
+			}
+
+			
+			
+			wc.userData.waterY += delta * 400; 
+			
+			ctx.fillStyle = 'rgba(200, 240, 255, 0.15)'; 
+			for (let i = 0; i < 15; i++) {
+				let y = (wc.userData.waterY + i * 40) % 512;
+				ctx.fillRect(0, y, 512, 8); 
+			}
+			
+			texture.needsUpdate = true;
+		});
+	}
+
+    animate();
+
+	renderUI();
+    	rebuildSlide();
+	
+	viewBtn.addEventListener('click', () => {
+		isExternal = !isExternal;
+		viewBtn.innerText = isExternal ? "Nézet: Külső" : "Nézet: Belső";
+		controls.enabled = isExternal;
+		if (isExternal) {
+			camera.position.set(20, 20, 20);
+		}
+	});
+
+	
+	window.addEventListener('keydown', (e) => {
+    	    if (e.key.toLowerCase() === 'h') {
+            const uiElements = [
+            document.getElementById('ui-panel'),
+            document.getElementById('pauseBtn'),
+            document.getElementById('modeBtn'),
+            document.getElementById('timerDisplay')
+        ];
+        
+        
+        const isHidden = uiElements[0].style.display === 'none';
+        
+        uiElements.forEach(el => {
+            if (el) {
+                el.style.display = isHidden ? 'block' : 'none';
+            }
+        });
+    }
+});
+	
+	window.runRandom = function() {
+		
+		randomStarGateGenerator()
+		
+		
+		renderUI(); 
+	};
+	
+    window.addEventListener('resize', () => {
+        camera.aspect = window.innerWidth / window.innerHeight;
+        camera.updateProjectionMatrix();
+        renderer.setSize(window.innerWidth, window.innerHeight);
+    });
+	randomStarGateGenerator()
+</script>
+</body>
+</html>
