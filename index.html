@@ -2,7 +2,7 @@
 <html lang="hu">
 <head>
     <meta charset="UTF-8">
-    <title>3D Csúszda - Személyre szabható</title>
+    <title>3D Vízi Csúszda Építő</title>
     <style>
         body { margin: 0; overflow: hidden; background: #000; }
         canvas { display: block; }
@@ -40,6 +40,17 @@
             <input type="number" id="slideDiameter" step="0.1" value="2.0">
             <label>Lejtés meredeksége</label>
             <input type="number" id="globalSlope" step="0.01" value="0.055">
+            <label>Kifutó színe</label>
+            <input type="color" id="runoutColor" value="#0088ff" onchange="rebuildSlide()">
+			<label>Idő mód</label>
+            <select id="timeMode" onchange="toggleTimeInput(); rebuildSlide();">
+                <option value="real">Valós idő (PC óra)</option>
+                <option value="fixed">Fix időpont</option>
+            </select>
+            <div id="fixedTimeContainer" style="display:none; gap:5px; margin-top:5px;">
+                <input type="number" id="fixedHour" min="0" max="23" value="12" style="width:45%;" onchange="rebuildSlide()"> :
+                <input type="number" id="fixedMinute" min="0" max="59" value="0" style="width:45%;" onchange="rebuildSlide()">
+            </div>
         </div>
 	<div class="param-group" style="border-top: 1px solid #444; padding-top: 10px; margin-top: 10px;">
     		<label>Statisztika:</label>
@@ -72,6 +83,10 @@
     }
 </script>
 <script type="module">
+	window.toggleTimeInput = function() {
+		const mode = document.getElementById('timeMode').value;
+		document.getElementById('fixedTimeContainer').style.display = mode === 'fixed' ? 'flex' : 'none';
+	};
 	let orangeColor = 0x884400;
 	let slideTime = 0;
 	let timerRunning = false;
@@ -89,14 +104,87 @@
     
 	let PARAMS = {
 		segments: [
-			{ type: 'turn', radius: 5, angle: 90, dir: 'left', light: 'rings', diameter: 2.0, slope: 0.06, shape: 'circle', color: '#ffcc00' },
-			{ type: 'turn', radius: 5, angle: 90, dir: 'right', light: 'stars2', diameter: 2.0, slope: 0.06, shape: 'circle', color: '#ffcc00' },
-			{ type: 'straight', len: 4, light: 'led_displays', diameter: 2.0, slope: 0.06, shape: 'circle', color: '#ffcc00' }
+			{ type: 'turn', radius: 5, angle: 90, dir: 'left', light: 'rings', diameter: 2.0, slope: 0.06, shape: 'circle', color: '#ffcc00', innerColor: '#000000' },
+			{ type: 'turn', radius: 5, angle: 90, dir: 'right', light: 'stars2', diameter: 2.0, slope: 0.06, shape: 'circle', color: '#ffcc00', innerColor: '#000000' },
+			{ type: 'straight', len: 4, light: 'led_displays', diameter: 2.0, slope: 0.06, shape: 'circle', color: '#ffcc00', innerColor: '#000000' }
 		]
 	};
+	
+	function bendGeometryToSlide(baseGeo, d, baseAngle, offsetDist) {
+		const geo = baseGeo.clone();
+		const posAttr = geo.attributes.position;
+		for (let i = 0; i < posAttr.count; i++) {
+			const lx = posAttr.getX(i);
+			const ly = posAttr.getY(i);
+			const bentPos = getPointOnSlide(d + lx, baseAngle - (ly / window.SLIDE_RAD), offsetDist);
+			posAttr.setXYZ(i, bentPos.x, bentPos.y, bentPos.z);
+		}
+		geo.computeVertexNormals();
+		return geo;
+	}
+	
+	function updateEnvironmentColor() {
+        const now = new Date();
+        const mode = document.getElementById('timeMode') ? document.getElementById('timeMode').value : 'real';
+        
+        let currentHour;
+        if (mode === 'real') {
+            currentHour = now.getHours() + now.getMinutes() / 60;
+        } else {
+            const h = parseFloat(document.getElementById('fixedHour').value) || 12;
+            const m = parseFloat(document.getElementById('fixedMinute').value) || 0;
+            currentHour = h + m / 60;
+        }
+
+        const start = new Date(now.getFullYear(), 0, 0);
+        const diff = now - start;
+        const dayOfYear = Math.floor(diff / (1000 * 60 * 60 * 24));
+        const daysFromWinterSolstice = (dayOfYear + 10) % 365;
+        const swing = -Math.cos((daysFromWinterSolstice / 365) * Math.PI * 2); 
+        const sunrise = 6.125 - swing * 1.375; 
+        const sunset = 18.375 + swing * 2.375; 
+        
+        let intensity = 0;
+        let skyColor = new THREE.Color(0x050515);
+
+        if (currentHour > sunrise && currentHour < sunset) {
+            const dayProgress = (currentHour - sunrise) / (sunset - sunrise);
+            intensity = Math.sin(dayProgress * Math.PI);
+            
+            // Égbolt átmenet: Napkelte (Narancs) -> Nappal (Kék) -> Napnyugta (Narancs)
+            const dayBlue = new THREE.Color(0x87CEEB);
+            const sunOrange = new THREE.Color(0xFF7F50);
+            skyColor.copy(sunOrange).lerp(dayBlue, intensity);
+        } else if (currentHour > sunrise - 1 && currentHour <= sunrise) {
+            // Pirkadat
+            skyColor.setHex(0x050515).lerp(new THREE.Color(0xFF7F50), currentHour - (sunrise - 1));
+        } else if (currentHour >= sunset && currentHour < sunset + 1) {
+            // Alkonyat
+            skyColor.setHex(0xFF7F50).lerp(new THREE.Color(0x050515), currentHour - sunset);
+        }
+
+        scene.background = skyColor;
+
+        const r = Math.floor(255 * intensity);
+        const g = Math.floor(127 * intensity);
+        const b = 0;
+        
+		globalSunIntensity = intensity;
+        
+        const dl = Math.floor(255 * intensity);
+        daylightMat.color.setHex((dl << 16) | (dl << 8) | dl);
+		
+        orangeColor = (r << 16) | (g << 8) | b;
+        orangeMat.color.setHex(orangeColor);
+        orangeBaseMat.color.setHex(orangeColor);
+        floorBgMat.color.setHex(orangeColor);
+		
+        const faintR = Math.floor(r * 0.25);
+        const faintG = Math.floor(g * 0.25);
+        faintOrangeMat.color.setHex((faintR << 16) | (faintG << 8) | b);
+    }
 
 	window.addSegmentUI = function() {
-        
         const lastSeg = PARAMS.segments.length > 0 ? PARAMS.segments[PARAMS.segments.length - 1] : null;
         PARAMS.segments.push({ 
             type: 'straight', 
@@ -105,6 +193,7 @@
             slope: lastSeg ? lastSeg.slope : 0.06,
             shape: lastSeg ? lastSeg.shape : 'circle',
             color: lastSeg ? lastSeg.color : '#ffcc00',
+            innerColor: lastSeg ? lastSeg.innerColor : '#000000',
             light: lastSeg ? lastSeg.light : 'rings'
         });
         renderUI();
@@ -130,6 +219,18 @@
 		}
 	}
 
+	function getLightIntensity(lightType) {
+		switch(lightType) {
+			case 'dark': return 0.0;
+			case 'stars': case 'stars2': case 'dots': case 'jumpscare': return 0.15;
+			case 'floor_run': return 0.3;
+			case 'turn_circles': case 'turn_droplets': case 'zigzag': return 0.5;
+			case 'rings': case 'water_curtain': return 0.8;
+			case 'strips': case 'center_tris': case 'text': case 'led_displays': return 1.0;
+			case 'daylight_rings': case 'daylight_half_rings': case 'daylight_stars': case 'daylight_dots': return 1.0 * globalSunIntensity;
+			default: return 0.5;
+		}
+	}
 	
 	window.randomBodySlideGenerator = function() {
 		PARAMS.segments = [];
@@ -227,15 +328,14 @@
 	const THEME_ORANGE = orangeColor;
 	
 	
-    function getSlideProps(dist) {
+	function getSlideProps(dist) {
         if (!PARAMS.segments || PARAMS.segments.length === 0) 
-            return { diameter: 2, slope: 0.05, shape1: 'circle', shape2: 'circle', t: 0, color: '#ffcc00', isOpen: false };
+            return { diameter: 2, slope: 0.05, shape1: 'circle', shape2: 'circle', t: 0, color: '#ffcc00', prevInner: '#000000', currInner: '#000000', prevInt: 0, currInt: 0, isOpen: false };
         
         let cur = 0;
         for (let i = 0; i < PARAMS.segments.length; i++) {
             let seg = PARAMS.segments[i];
             let slen = seg.type === 'straight' ? (seg.len || 0.1) : ((parseFloat(seg.radius) || 0.1) * Math.abs(parseFloat(seg.angle) || 90) * Math.PI / 180);
-            
             
             if (dist <= cur + slen + 0.0001 || i === PARAMS.segments.length - 1) {
                 let prev = i > 0 ? PARAMS.segments[i-1] : seg;
@@ -248,6 +348,10 @@
                     shape2: seg.shape || 'circle',
                     t: t,
                     color: seg.color || '#ffcc00',
+                    prevInner: prev.innerColor || '#000000',
+                    currInner: seg.innerColor || '#000000',
+                    prevInt: getLightIntensity(prev.light),
+                    currInt: getLightIntensity(seg.light),
                     isOpen: seg.shape === 'open'
                 };
             }
@@ -255,7 +359,13 @@
         }
         
         const last = PARAMS.segments[PARAMS.segments.length - 1];
-        return { diameter: last.diameter, slope: last.slope, shape1: last.shape, shape2: last.shape, t: 1, color: last.color, isOpen: last.shape === 'open' };
+        return { 
+            diameter: last.diameter, slope: last.slope, shape1: last.shape, shape2: last.shape, t: 1, 
+            color: last.color, 
+            prevInner: last.innerColor || '#000000', currInner: last.innerColor || '#000000',
+            prevInt: getLightIntensity(last.light), currInt: getLightIntensity(last.light),
+            isOpen: last.shape === 'open' 
+        };
     }
 
 	function getShapeXY(shape, r, angle) {
@@ -398,12 +508,18 @@
 	const squareGeoPre = new THREE.PlaneGeometry(0.02, 0.02);
     const dotGeoPre = new THREE.CircleGeometry(0.01, 8);
 	const orangeMat = new THREE.MeshBasicMaterial({ color: orangeColor, side: THREE.DoubleSide });
+	const daylightMat = new THREE.MeshBasicMaterial({ color: 0xffffff, side: THREE.DoubleSide });
+    let globalSunIntensity = 1.0;
     const redMatDot = new THREE.MeshBasicMaterial({ color: 0xff0000, side: THREE.DoubleSide });
     const whiteMatPure = new THREE.MeshBasicMaterial({ color: 0xffffff, side: THREE.DoubleSide });
 	const orangeBaseMat = new THREE.MeshBasicMaterial({ color: THEME_ORANGE, side: THREE.DoubleSide });
     const floorBgMat = new THREE.MeshBasicMaterial({ color: THEME_ORANGE, side: THREE.DoubleSide });
     const floorWhiteMat = new THREE.MeshBasicMaterial({ color: 0xffffff, side: THREE.DoubleSide }); 
     const multiColors = [0xff0000, 0x00ff00, 0xffff00, 0x0000ff]; 
+	const faintOrangeMat = new THREE.MeshBasicMaterial({ side: THREE.DoubleSide });    
+    const daylightDotGeoBase = new THREE.CircleGeometry(0.20, 32);
+    const daylightStarGeoBase = createStarGeometry(0.30, 0.12);
+    const daylightRingGeoBase = new THREE.RingGeometry(0.12, 0.20, 32); // Lyukas kör (gyűrű)
 
     
     function createStarGeometry(outerRadius, innerRadius) {
@@ -485,6 +601,14 @@
                         <label>Lejtés (Meredekség)</label>
                         <input type="number" step="0.01" value="${seg.slope || 0.06}" onchange="updateSeg(${i}, 'slope', parseFloat(this.value))">
                     </div>
+					<div style="flex:1;">
+                        <label>Külső szín</label>
+                        <input type="color" value="${seg.color || '#ffcc00'}" onchange="updateSeg(${i}, 'color', this.value)">
+                    </div>
+                    <div style="flex:1;">
+                        <label>Belső szín</label>
+                        <input type="color" value="${seg.innerColor || '#000000'}" onchange="updateSeg(${i}, 'innerColor', this.value)">
+                    </div>
                 </div>
 
                 <label>Szín</label>
@@ -504,9 +628,14 @@
 					<option value="turn_circles" ${seg.light === 'turn_circles' ? 'selected' : ''}>Kanyar: Körök</option>
 					<option value="turn_droplets" ${seg.light === 'turn_droplets' ? 'selected' : ''}>Kanyar: Vízcseppek</option>
 					<option value="zigzag" ${seg.light === 'zigzag' ? 'selected' : ''}>Tető: Cikkcakk vonal</option>
-					${seg.type === 'straight' ? `<option value="text" ${seg.light === 'text' ? 'selected' : ''}>Különleges Felirat</option>` : ''}
 					<option value="dark" ${seg.light === 'dark' ? 'selected' : ''}>Sötét</option>
 					<option value="led_displays" ${seg.light === 'led_displays' ? 'selected' : ''}>Kerek LED kijelzők</option>
+					<option value="daylight_rings" ${seg.light === 'daylight_rings' ? 'selected' : ''}>Daylight: Fénygyűrűk</option>
+					<option value="daylight_stars" ${seg.light === 'daylight_stars' ? 'selected' : ''}>Daylight: Nagy csillagok</option>
+					<option value="daylight_dots" ${seg.light === 'daylight_dots' ? 'selected' : ''}>Daylight: Nagy pöttyök</option>
+					<option value="dark" ${seg.light === 'dark' ? 'selected' : ''}>Sötét</option>
+					<option value="daylight_rings" ${seg.light === 'daylight_rings' ? 'selected' : ''}>Daylight: Fénygyűrűk</option>
+					<option value="daylight_half_rings" ${seg.light === 'daylight_half_rings' ? 'selected' : ''}>Daylight: Fél fénygyűrűk</option>
 				</select>
 
 				${seg.type === 'straight' ? 
@@ -537,6 +666,7 @@
     };
 	
 	function addStartAndEndElements() {
+		const startPos = mainPath.getPointAt(0);
 		const endPos = mainPath.getPointAt(1);
 		const endTangent = mainPath.getTangentAt(1).normalize();
 
@@ -544,23 +674,81 @@
 		flatEndDir.y = 0; 
 		flatEndDir.normalize();
 
+		const lastProps = getSlideProps(totalLen);
+		const runoutColor = document.getElementById('runoutColor') ? document.getElementById('runoutColor').value : '#0088ff';
+		const rMat = new THREE.MeshPhongMaterial({ color: runoutColor, side: THREE.DoubleSide });
+
+		const w = lastProps.diameter;
+		const h = w * 0.6; 
+		const len = 8;     
+		const thickness = 0.1;
+
 		const endGroup = new THREE.Group();
 		
-	
-	
-	
-
-		const runoutLen = 7;
-		const runoutGeo = new THREE.CylinderGeometry(window.SLIDE_RAD, window.SLIDE_RAD, runoutLen, 32, 1, true, 0, Math.PI);
-		const yellowMat = new THREE.MeshPhongMaterial({ color: 0xffcc00, side: THREE.DoubleSide });
-		const runoutMesh = new THREE.Mesh(runoutGeo, yellowMat);
-		runoutMesh.rotation.set(Math.PI / 2, -Math.PI / 2, 0);
-		runoutMesh.position.set(0, 0, runoutLen / 2);
-		endGroup.add(runoutMesh);
+		// Szögletes vályú elemei
+		const bottomBox = new THREE.Mesh(new THREE.BoxGeometry(w, thickness, len), rMat);
+		bottomBox.position.set(0, -w/2, len/2);
 		
-		endGroup.position.copy(endPos);
+		const leftBox = new THREE.Mesh(new THREE.BoxGeometry(thickness, h, len), rMat);
+		leftBox.position.set(-w/2 + thickness/2, -w/2 + h/2, len/2);
+		
+		const rightBox = new THREE.Mesh(new THREE.BoxGeometry(thickness, h, len), rMat);
+		rightBox.position.set(w/2 - thickness/2, -w/2 + h/2, len/2);
+
+		// BEFALAZOTT VÉG (Kifutó lezárása)
+		const backWall = new THREE.Mesh(new THREE.BoxGeometry(w, h, thickness), rMat);
+		backWall.position.set(0, -w/2 + h/2, len - thickness/2);
+
+		endGroup.add(bottomBox, leftBox, rightBox, backWall);
+		
+		// Sima átmenet: 0.4 méterrel visszatoljuk a csőbe, így résmentesen és esztétikusan folyik egybe a két idom
+		const transitionOffset = flatEndDir.clone().multiplyScalar(-0.4);
+		endGroup.position.copy(endPos).add(transitionOffset);
 		endGroup.lookAt(endPos.clone().add(flatEndDir));
 		slideGroup.add(endGroup);
+
+		const groundY = endPos.y - w/2;
+
+		// Térkő alap
+		const canvas = document.createElement('canvas');
+		canvas.width = 256; canvas.height = 256;
+		const ctx = canvas.getContext('2d');
+		ctx.fillStyle = '#888888'; ctx.fillRect(0, 0, 256, 256);
+		ctx.strokeStyle = '#555555'; ctx.lineWidth = 4;
+		for(let i=0; i<=256; i+=64) {
+			ctx.beginPath(); ctx.moveTo(i, 0); ctx.lineTo(i, 256); ctx.stroke();
+			ctx.beginPath(); ctx.moveTo(0, i); ctx.lineTo(256, i); ctx.stroke();
+			if (i < 256) {
+				ctx.beginPath(); ctx.moveTo(i+32, 32); ctx.lineTo(i+32, 256); ctx.stroke();
+			}
+		}
+		const groundTex = new THREE.CanvasTexture(canvas);
+		groundTex.wrapS = groundTex.wrapT = THREE.RepeatWrapping;
+		groundTex.repeat.set(150, 150);
+
+		const groundMesh = new THREE.Mesh(
+			new THREE.PlaneGeometry(800, 800),
+			new THREE.MeshPhongMaterial({ map: groundTex, shininess: 5 })
+		);
+		groundMesh.rotation.x = -Math.PI / 2;
+		groundMesh.position.set(endPos.x, groundY - thickness, endPos.z);
+		slideGroup.add(groundMesh);
+
+		// INDÍTÓTORONY - A Csúszda a szélén induljon!
+		const startTangent = mainPath.getTangentAt(0).normalize();
+		const towerSize = w * 1.8;
+		const towerHeight = (startPos.y + 2.5) - groundY;
+		
+		// Eltoljuk a tornyot hátrafelé a kezdőtangenssel ellentétesen, így a csúszda szája pontosan a peremére esik
+		const towerOffset = startTangent.clone().negate().multiplyScalar(towerSize / 2);
+		const towerPos = startPos.clone().add(towerOffset);
+
+		const towerGeo = new THREE.BoxGeometry(towerSize, towerHeight, towerSize);
+		const towerMat = new THREE.MeshPhongMaterial({ color: 0x444444, wireframe: true });
+		const towerMesh = new THREE.Mesh(towerGeo, towerMat);
+		
+		towerMesh.position.set(towerPos.x, groundY + (towerHeight / 2), towerPos.z);
+		slideGroup.add(towerMesh);
 	}
 	
 	window.rebuildSlide = function() {
@@ -693,35 +881,51 @@
 		return path;
 	}
 
-    function buildCustomTube() {
+	function buildCustomTube() {
         const radSegs = 40; 
         const distSteps = Math.max(200, Math.floor(totalLen * 15));
         
         const vertsOut = [], vertsIn = [], indicesOut = [], indicesIn = [], colorsOut = [], colorsIn = [];
         const cColor = new THREE.Color();
-        const blackColor = new THREE.Color(0x010101);
+        const baseInColor = new THREE.Color();
+        const tempInColor = new THREE.Color();
+        const colPrev = new THREE.Color();
+        const colCurr = new THREE.Color();
 
-        for (let i = 0; i <= distSteps; i++) {
+		for (let i = 0; i <= distSteps; i++) {
             let dist = (i / distSteps) * totalLen;
             let props = getSlideProps(dist);
+            
+            // Külső szín
             cColor.set(props.color);
+            
+            // Sima, csíkozásmentes átmenet a választott belső színek között a szakaszok mentén
+            colPrev.set(props.prevInner);
+            colCurr.set(props.currInner);
+            baseInColor.copy(colPrev).lerp(colCurr, props.t);
+
+            // Sima átmenet a megvilágítás erejében (0.0 = sötét, 1.0 = max fény)
+            let intensity = props.prevInt * (1 - props.t) + props.currInt * props.t;
+
+            // A kiválasztott belső színt megszorozzuk az intenzitással.
+            // Ha intensity = 0 (dark), a szín automatikusan tiszta fekete lesz.
+            // Ha intensity = 1 (erős fény), a szín pontosan az általad választott hex kód marad. Fehéredés nincs!
+            tempInColor.copy(baseInColor).multiplyScalar(Math.min(1.0, Math.max(0.0, intensity)));
 
             for (let j = 0; j <= radSegs; j++) {
                 let a = (j / radSegs) * Math.PI * 2;
                 
-                
+                // Külső héj csúcspontjai
                 let vOut = getPointOnSlide(dist, a, 0); 
                 vertsOut.push(vOut.x, vOut.y, vOut.z);
                 colorsOut.push(cColor.r, cColor.g, cColor.b);
 
-                
+                // Belső héj csúcspontjai
                 let vIn = getPointOnSlide(dist, a, 0.015);
                 vertsIn.push(vIn.x, vIn.y, vIn.z);
-                if (props.isOpen) {
-                    colorsIn.push(cColor.r, cColor.g, cColor.b);
-                } else {
-                    colorsIn.push(blackColor.r, blackColor.g, blackColor.b);
-                }
+                
+                // Belülre MINDIG a belső színt alkalmazzuk
+                colorsIn.push(tempInColor.r, tempInColor.g, tempInColor.b);
             }
         }
 
@@ -735,11 +939,9 @@
                 let row2 = (i + 1) * (radSegs + 1);
                 let a_idx = row1 + j, b_idx = row2 + j, c_idx = row1 + (j + 1), d_idx = row2 + (j + 1);
                 
-                
                 indicesOut.push(a_idx, b_idx, c_idx); 
                 indicesOut.push(b_idx, d_idx, c_idx);
 
-                
                 indicesIn.push(a_idx, c_idx, b_idx); 
                 indicesIn.push(b_idx, c_idx, d_idx);
             }
@@ -1152,46 +1354,78 @@
 				slideGroup.add(textMesh);
 			}
 			else if (seg.light === 'led_displays') {
-				const isShortStraight = (seg.type === 'straight' && seg.len < 4);
-				const distStep = 2.5; 
+				// Segédfüggvény a kijelzők legyártásához a kért aszimmetriák alapján
+				const createLEDDisplayAt = (d, baseAngle, id) => {
+					// Halvány háttér - beljebb hozva a cső falától (0.025-ös offset = 1 cm-es lebegés a térben)
+					const bgGeo = bendGeometryToSlide(new THREE.CircleGeometry(0.35, 32), d, baseAngle, 0.025);
+					const bgMesh = new THREE.Mesh(bgGeo, faintOrangeMat);
+					slideGroup.add(bgMesh);
 
-				for (let d = currentDist + 1.2; d < segEnd; d += distStep) {
-					const angles = isShortStraight ? [Math.PI / 2] : [Math.PI / 4, 3 * Math.PI / 4];
+					// Kijelző rajzfelület
+					const canvas = document.createElement('canvas');
+					canvas.width = 512; canvas.height = 512;
+					const ctx = canvas.getContext('2d');
+					const texture = new THREE.CanvasTexture(canvas);
+					const mat = new THREE.MeshBasicMaterial({ map: texture, transparent: true, side: THREE.DoubleSide });
+					
+					// LED Kijelző - még beljebb tolva, pontosan 2 mm-rel a lebegő háttér előtt (0.027-es offset helyett a kódodban lévő 0.030 stabilabb lebegést ad)
+					const geo = bendGeometryToSlide(displayGeoBase, d, baseAngle, 0.030);
+					const mesh = new THREE.Mesh(geo, mat);
+					
+					let pType = (seg.type === 'turn') ? 'star' : (Math.random() > 0.4 ? 'coil' : 'smiley');
+					mesh.userData = { 
+						canvas: canvas, ctx: ctx, texture: texture, 
+						patternType: pType, offset: d + id 
+					};
+					
+					imageDisplays.push(mesh);
+					slideGroup.add(mesh);
+				};
 
-					angles.forEach((baseAngle, sideIdx) => {
-						
-						const canvas = document.createElement('canvas');
-						canvas.width = 512; canvas.height = 512;
-						const ctx = canvas.getContext('2d');
-						const texture = new THREE.CanvasTexture(canvas);
-						
-						
-						const mat = new THREE.MeshBasicMaterial({ map: texture, transparent: true, side: THREE.DoubleSide });
-						
-						
-						const geo = displayGeoBase.clone();
-						const posAttr = geo.attributes.position;
-						for (let i = 0; i < posAttr.count; i++) {
-							const lx = posAttr.getX(i); 
-							const ly = posAttr.getY(i); 
-							
-							
-							const bentPos = getPointOnSlide(d + lx, baseAngle - (ly / window.SLIDE_RAD), 0.018);
-							posAttr.setXYZ(i, bentPos.x, bentPos.y, bentPos.z);
-						}
-						geo.computeVertexNormals();
+				if (seg.type === 'turn') {
+					// --- KANYAR LOGIKA ---
+					// Nyolcadkörönként (45 fokonként) osztjuk le
+					const sectors = Math.max(1, Math.round(seg.angle / 30));
+					const displaysPerSector = (seg.radius > 4.0) ? 3 : 2; // Nagyobb ívben 3, kisebb ívben 2
+					const totalDisplays = sectors * displaysPerSector;
 
-						const mesh = new THREE.Mesh(geo, mat);
-						let pType = (seg.type === 'turn') ? 'star' : (Math.random() > 0.4 ? 'coil' : 'smiley');
-						
-						mesh.userData = { 
-							canvas: canvas, ctx: ctx, texture: texture, 
-							patternType: pType, offset: d + sideIdx 
-						};
-						
-						imageDisplays.push(mesh);
-						slideGroup.add(mesh);
-					});
+					for (let i = 0; i < totalDisplays; i++) {
+						const t_turn = (i + 0.5) / totalDisplays;
+						const d = currentDist + t_turn * segLen;
+						const baseAngle = (i % 2 === 0) ? (Math.PI / 4) : (3 * Math.PI / 4);
+						createLEDDisplayAt(d, baseAngle, i);
+					}
+				} 
+				else if (seg.type === 'straight') {
+					// --- EGYENES LOGIKA ---
+					if (segLen <= 2.0) {
+						// Rövid egyenes (<= 2m): 2 darab legfelül, a széleik az illesztésekhez közel (15 cm távolságra a szélektől)
+						const d1 = currentDist + 0.35;
+						const d2 = currentDist + segLen - 0.35;
+						createLEDDisplayAt(d1, Math.PI / 2, 0);
+						createLEDDisplayAt(d2, Math.PI / 2, 1);
+					} else {
+						// Hosszabb egyenes (> 2m): 
+						// A kijelzők háttér-sugara 0.35 méter. Ennyivel toljuk beljebb a szélsőket,
+						// így a szélük (és nem a közepük) érintkezik pontosan az illesztési vonallal.
+						const epsilon = 0.35; 
+
+						// JAVÍTOTT: 3 db a BAL oldalon (Math.PI / 4)
+						const dLeft0 = currentDist + epsilon;               // Bal első szélével az indító illesztésen
+						const dLeft1 = currentDist + segLen * 0.5;          // Bal középső
+						const dLeft2 = currentDist + segLen - epsilon;      // Bal hátsó szélével a záró illesztésen
+
+						createLEDDisplayAt(dLeft0, Math.PI / 4, 0);
+						createLEDDisplayAt(dLeft1, Math.PI / 4, 1);
+						createLEDDisplayAt(dLeft2, Math.PI / 4, 2);
+
+						// JAVÍTOTT: 2 db a JOBB oldalon (3 * Math.PI / 4), pontosan a balosak mértani közepeiben:
+						const dRight0 = (dLeft0 + dLeft1) / 2;              // Első és második balos között
+						const dRight1 = (dLeft1 + dLeft2) / 2;              // Második és harmadik balos között
+
+						createLEDDisplayAt(dRight0, 3 * Math.PI / 4, 3);
+						createLEDDisplayAt(dRight1, 3 * Math.PI / 4, 4);
+					}
 				}
 			}
 			else if (seg.light === 'jumpscare') {
@@ -1303,7 +1537,52 @@
 				waterCurtains.push(mesh);
 				slideGroup.add(mesh);
 			}
-
+			else if (seg.light === 'daylight_dots') {
+				for (let d = currentDist + 0.6; d < segEnd; d += 1.2) {
+					let rowOffset = (Math.floor(d * 10) % 2 === 0) ? 0 : (Math.PI / 6);
+					for (let i = 0; i < 6; i++) {
+						const ang = (i / 6) * Math.PI * 2 + rowOffset;
+						const bentGeo = bendGeometryToSlide(daylightDotGeoBase, d, ang, 0.030);
+						slideGroup.add(new THREE.Mesh(bentGeo, daylightMat));
+					}
+				}
+			}
+			else if (seg.light === 'daylight_stars') {
+				for (let d = currentDist + 0.8; d < segEnd; d += 1.6) {
+					let rowOffset = (Math.floor(d * 10) % 2 === 0) ? 0 : (Math.PI / 5);
+					for (let i = 0; i < 5; i++) {
+						const ang = (i / 5) * Math.PI * 2 + rowOffset;
+						const bentGeo = bendGeometryToSlide(daylightStarGeoBase, d, ang, 0.030);
+						slideGroup.add(new THREE.Mesh(bentGeo, daylightMat));
+					}
+				}
+			}
+			else if (seg.light === 'daylight_rings') {
+				// Sűrűbb teljes 3D-s fehér fénygyűrűk (1.0m helyett 0.4 méterenként)
+				for (let d = currentDist + 0.2; d < segEnd; d += 0.4) {
+					const ringPoints = [];
+					for (let i = 0; i <= 40; i++) {
+						const ang = (i / 40) * Math.PI * 2;
+						ringPoints.push(getPointOnSlide(d, ang, 0.026));
+					}
+					const ringCurve = new THREE.CatmullRomCurve3(ringPoints);
+					const ringGeo = new THREE.TubeGeometry(ringCurve, 40, 0.015, 8, true);
+					slideGroup.add(new THREE.Mesh(ringGeo, daylightMat));
+				}
+			}
+			else if (seg.light === 'daylight_half_rings') {
+				// Sűrűbb 3D-s fehér félgyűrűk csak a csúszda felső felén (1.0m helyett 0.4 méterenként)
+				for (let d = currentDist + 0.2; d < segEnd; d += 0.4) {
+					const ringPoints = [];
+					for (let i = 0; i <= 20; i++) {
+						const ang = (i / 20) * Math.PI;
+						ringPoints.push(getPointOnSlide(d, ang, 0.026));
+					}
+					const ringCurve = new THREE.CatmullRomCurve3(ringPoints);
+					const ringGeo = new THREE.TubeGeometry(ringCurve, 20, 0.015, 8, false);
+					slideGroup.add(new THREE.Mesh(ringGeo, daylightMat));
+				}
+			}
 			currentDist = segEnd;
 		});
 
@@ -1852,43 +2131,6 @@
 	const viewBtn = document.getElementById('viewBtn');
 		controls = new OrbitControls(camera, renderer.domElement);
 		controls.enabled = false; 
-
-    function updateEnvironmentColor() {
-        const now = new Date();
-        
-        
-        const start = new Date(now.getFullYear(), 0, 0);
-        const diff = now - start;
-        const dayOfYear = Math.floor(diff / (1000 * 60 * 60 * 24));
-        
-        
-        const daysFromWinterSolstice = (dayOfYear + 10) % 365;
-        const swing = -Math.cos((daysFromWinterSolstice / 365) * Math.PI * 2); 
-        
-        
-        const sunrise = 6.125 - swing * 1.375; 
-        const sunset = 18.375 + swing * 2.375; 
-
-        const currentHour = now.getHours() + now.getMinutes() / 60;
-        let intensity = 0;
-
-        if (currentHour > sunrise && currentHour < sunset) {
-            
-            const dayProgress = (currentHour - sunrise) / (sunset - sunrise);
-            intensity = Math.sin(dayProgress * Math.PI);
-        }
-
-        
-        const r = Math.floor(255 * intensity);
-        const g = Math.floor(127 * intensity);
-        const b = 0;
-        
-        
-        orangeColor = (r << 16) | (g << 8) | b;
-        orangeMat.color.setHex(orangeColor);
-        orangeBaseMat.color.setHex(orangeColor);
-        floorBgMat.color.setHex(orangeColor);
-    }
 
 	function animate() {
         requestAnimationFrame(animate);
