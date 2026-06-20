@@ -182,6 +182,11 @@
         const faintR = Math.floor(r * 0.25);
         const faintG = Math.floor(g * 0.25);
         faintOrangeMat.color.setHex((faintR << 16) | (faintG << 8) | b);
+
+        // A nyitott csúszda fényereje követi a külvilágot (éjszaka kap egy minimális 5%-os derengést, hogy ne tűnjön el teljesen a sötétben)
+        const openBright = Math.max(0.05, intensity);
+        openSlideMatOut.color.setRGB(openBright, openBright, openBright);
+        openSlideMatIn.color.setRGB(openBright, openBright, openBright);
     }
 
 	window.addSegmentUI = function() {
@@ -519,7 +524,9 @@
 	const faintOrangeMat = new THREE.MeshBasicMaterial({ side: THREE.DoubleSide });    
     const daylightDotGeoBase = new THREE.CircleGeometry(0.20, 32);
     const daylightStarGeoBase = createStarGeometry(0.30, 0.12);
-    const daylightRingGeoBase = new THREE.RingGeometry(0.12, 0.20, 32); // Lyukas kör (gyűrű)
+    const daylightRingGeoBase = new THREE.RingGeometry(0.12, 0.20, 32);
+	const openSlideMatOut = new THREE.MeshPhongMaterial({ vertexColors: true, side: THREE.FrontSide, shininess: 40 });
+	const openSlideMatIn = new THREE.MeshPhongMaterial({ vertexColors: true, side: THREE.FrontSide, shininess: 10 });
 
     
     function createStarGeometry(outerRadius, innerRadius) {
@@ -631,11 +638,10 @@
 					<option value="dark" ${seg.light === 'dark' ? 'selected' : ''}>Sötét</option>
 					<option value="led_displays" ${seg.light === 'led_displays' ? 'selected' : ''}>Kerek LED kijelzők</option>
 					<option value="daylight_rings" ${seg.light === 'daylight_rings' ? 'selected' : ''}>Daylight: Fénygyűrűk</option>
+					<option value="daylight_half_rings" ${seg.light === 'daylight_half_rings' ? 'selected' : ''}>Daylight: Fél fénygyűrűk</option>
 					<option value="daylight_stars" ${seg.light === 'daylight_stars' ? 'selected' : ''}>Daylight: Nagy csillagok</option>
 					<option value="daylight_dots" ${seg.light === 'daylight_dots' ? 'selected' : ''}>Daylight: Nagy pöttyök</option>
 					<option value="dark" ${seg.light === 'dark' ? 'selected' : ''}>Sötét</option>
-					<option value="daylight_rings" ${seg.light === 'daylight_rings' ? 'selected' : ''}>Daylight: Fénygyűrűk</option>
-					<option value="daylight_half_rings" ${seg.light === 'daylight_half_rings' ? 'selected' : ''}>Daylight: Fél fénygyűrűk</option>
 				</select>
 
 				${seg.type === 'straight' ? 
@@ -679,30 +685,111 @@
 		const rMat = new THREE.MeshPhongMaterial({ color: runoutColor, side: THREE.DoubleSide });
 
 		const w = lastProps.diameter;
-		const h = w * 0.6; 
-		const len = 8;     
+		const R = w / 2;
+		
+		// Lekérdezzük az utolsó elem pontos keresztmetszet-típusát és peremmagasságát (bal szélső pont y koordinátája)
+		const shapeType = lastProps.shape2;
+		const edgeCoord = getShapeXY(shapeType, R, -Math.PI);
+		const topY = edgeCoord.y;         // A csúszda peremének pontos magassága (pl. körnél 0, félkörnél -R)
+
+		const totalRunoutLen = 8;     
+		const transLen = 1.5;             // Az átmeneti szakasz hossza
+		const mainLen = totalRunoutLen - transLen; // A tiszta szögletes szakasz hossza
 		const thickness = 0.1;
 
 		const endGroup = new THREE.Group();
-		
-		// Szögletes vályú elemei
-		const bottomBox = new THREE.Mesh(new THREE.BoxGeometry(w, thickness, len), rMat);
-		bottomBox.position.set(0, -w/2, len/2);
-		
-		const leftBox = new THREE.Mesh(new THREE.BoxGeometry(thickness, h, len), rMat);
-		leftBox.position.set(-w/2 + thickness/2, -w/2 + h/2, len/2);
-		
-		const rightBox = new THREE.Mesh(new THREE.BoxGeometry(thickness, h, len), rMat);
-		rightBox.position.set(w/2 - thickness/2, -w/2 + h/2, len/2);
 
-		// BEFALAZOTT VÉG (Kifutó lezárása)
-		const backWall = new THREE.Mesh(new THREE.BoxGeometry(w, h, thickness), rMat);
-		backWall.position.set(0, -w/2 + h/2, len - thickness/2);
+		// ==========================================
+		// 1. DINAMIKUS ÁTMENETI IDOM (LOFT)
+		// ==========================================
+		const stepsZ = 15;
+		const stepsS = 30;
+		const transGeo = new THREE.BufferGeometry();
+		const verts = [];
+		const indices = [];
+		const uvs = [];
+
+		for (let i = 0; i <= stepsZ; i++) {
+			const weight = i / stepsZ; // 0.0 (csőnél) -> 1.0 (vályúnál)
+			const z = weight * transLen;
+
+			for (let j = 0; j <= stepsS; j++) {
+				const s = j / stepsS;
+				const alpha = -Math.PI + s * Math.PI; // -PI-től 0-ig (alsó ív)
+
+				// Csúszda végének PONTOS koordinátái (alkalmazkodik a kör/félkör/ovális formához)
+				const coord = getShapeXY(shapeType, R, alpha);
+				const x_circ = coord.x;
+				const y_circ = coord.y;
+
+				// Vályú pontjai (a pereme pontosan a csúszda peremének topY magasságához igazodik)
+				let x_rect, y_rect;
+				if (s < 0.25) { // Bal oldali függőleges fal
+					x_rect = -R;
+					y_rect = topY - (s / 0.25) * (topY + R);
+				} else if (s <= 0.75) { // Lapos aljzat
+					x_rect = -R + ((s - 0.25) / 0.5) * (2 * R);
+					y_rect = -R;
+				} else { // Jobb oldali függőleges fal
+					x_rect = R;
+					y_rect = -R + ((s - 0.75) / 0.25) * (topY + R);
+				}
+
+				// Sima lineáris interpoláció a valódi csúszdaforma és a szögletes vályú között
+				const x = (1 - weight) * x_circ + weight * x_rect;
+				const y = (1 - weight) * y_circ + weight * y_rect;
+
+				verts.push(x, y, z);
+				uvs.push(s, weight);
+			}
+		}
+
+		// Indexek generálása
+		for (let i = 0; i < stepsZ; i++) {
+			for (let j = 0; j < stepsS; j++) {
+				const row1 = i * (stepsS + 1);
+				const row2 = (i + 1) * (stepsS + 1);
+
+				const a = row1 + j;
+				const b = row2 + j;
+				const c = row1 + j + 1;
+				const d = row2 + j + 1;
+
+				indices.push(a, b, c);
+				indices.push(b, d, c);
+			}
+		}
+
+		transGeo.setAttribute('position', new THREE.Float32BufferAttribute(verts, 3));
+		transGeo.setAttribute('uv', new THREE.Float32BufferAttribute(uvs, 2));
+		transGeo.setIndex(indices);
+		transGeo.computeVertexNormals();
+
+		const transitionMesh = new THREE.Mesh(transGeo, rMat);
+		endGroup.add(transitionMesh);
+
+		// ==========================================
+		// 2. TISZTA SZÖGLETES VÁLYÚ (Dinamikus falmagassággal)
+		// ==========================================
+		const h_wall = topY + R; // A fal magassága alkalmazkodik a perem magasságához
+
+		const bottomBox = new THREE.Mesh(new THREE.BoxGeometry(w, thickness, mainLen), rMat);
+		bottomBox.position.set(0, -R, transLen + mainLen/2);
+		
+		const leftBox = new THREE.Mesh(new THREE.BoxGeometry(thickness, h_wall, mainLen), rMat);
+		leftBox.position.set(-R + thickness/2, -R + h_wall/2, transLen + mainLen/2);
+		
+		const rightBox = new THREE.Mesh(new THREE.BoxGeometry(thickness, h_wall, mainLen), rMat);
+		rightBox.position.set(R - thickness/2, -R + h_wall/2, transLen + mainLen/2);
+
+		// BEFALAZOTT VÉG (Szintén igazítva a dinamikus magassághoz)
+		const backWall = new THREE.Mesh(new THREE.BoxGeometry(w, h_wall, thickness), rMat);
+		backWall.position.set(0, -R + h_wall/2, totalRunoutLen - thickness/2);
 
 		endGroup.add(bottomBox, leftBox, rightBox, backWall);
 		
-		// Sima átmenet: 0.4 méterrel visszatoljuk a csőbe, így résmentesen és esztétikusan folyik egybe a két idom
-		const transitionOffset = flatEndDir.clone().multiplyScalar(-0.4);
+		// Illesztés: 0.05 méter átfedéssel csatlakoztatjuk a csőhöz
+		const transitionOffset = flatEndDir.clone().multiplyScalar(-0.75);
 		endGroup.position.copy(endPos).add(transitionOffset);
 		endGroup.lookAt(endPos.clone().add(flatEndDir));
 		slideGroup.add(endGroup);
@@ -734,12 +821,11 @@
 		groundMesh.position.set(endPos.x, groundY - thickness, endPos.z);
 		slideGroup.add(groundMesh);
 
-		// INDÍTÓTORONY - A Csúszda a szélén induljon!
+		// INDÍTÓTORONY (A csúszda pereménél)
 		const startTangent = mainPath.getTangentAt(0).normalize();
 		const towerSize = w * 1.8;
 		const towerHeight = (startPos.y + 2.5) - groundY;
 		
-		// Eltoljuk a tornyot hátrafelé a kezdőtangenssel ellentétesen, így a csúszda szája pontosan a peremére esik
 		const towerOffset = startTangent.clone().negate().multiplyScalar(towerSize / 2);
 		const towerPos = startPos.clone().add(towerOffset);
 
@@ -882,86 +968,89 @@
 	}
 
 	function buildCustomTube() {
-        const radSegs = 40; 
-        const distSteps = Math.max(200, Math.floor(totalLen * 15));
-        
-        const vertsOut = [], vertsIn = [], indicesOut = [], indicesIn = [], colorsOut = [], colorsIn = [];
-        const cColor = new THREE.Color();
-        const baseInColor = new THREE.Color();
-        const tempInColor = new THREE.Color();
-        const colPrev = new THREE.Color();
-        const colCurr = new THREE.Color();
+		let currentDist = 0;
 
-		for (let i = 0; i <= distSteps; i++) {
-            let dist = (i / distSteps) * totalLen;
-            let props = getSlideProps(dist);
-            
-            // Külső szín
-            cColor.set(props.color);
-            
-            // Sima, csíkozásmentes átmenet a választott belső színek között a szakaszok mentén
-            colPrev.set(props.prevInner);
-            colCurr.set(props.currInner);
-            baseInColor.copy(colPrev).lerp(colCurr, props.t);
+		PARAMS.segments.forEach((seg, segIdx) => {
+			const segLen = (seg.type === 'straight') ? (seg.len || 0.1) : ((parseFloat(seg.radius) || 0.1) * (Math.abs(parseFloat(seg.angle)) * Math.PI / 180));
+			const segEnd = currentDist + segLen;
 
-            // Sima átmenet a megvilágítás erejében (0.0 = sötét, 1.0 = max fény)
-            let intensity = props.prevInt * (1 - props.t) + props.currInt * props.t;
+			const radSegs = 40;
+			// A felbontást a szakasz hosszához igazítjuk
+			const steps = Math.max(10, Math.floor(segLen * 15));
 
-            // A kiválasztott belső színt megszorozzuk az intenzitással.
-            // Ha intensity = 0 (dark), a szín automatikusan tiszta fekete lesz.
-            // Ha intensity = 1 (erős fény), a szín pontosan az általad választott hex kód marad. Fehéredés nincs!
-            tempInColor.copy(baseInColor).multiplyScalar(Math.min(1.0, Math.max(0.0, intensity)));
+			const vertsOut = [], vertsIn = [], indicesOut = [], indicesIn = [], colorsOut = [], colorsIn = [];
+			const cColor = new THREE.Color(seg.color || '#ffcc00');
+			const baseInColor = new THREE.Color(seg.innerColor || '#000000');
 
-            for (let j = 0; j <= radSegs; j++) {
-                let a = (j / radSegs) * Math.PI * 2;
-                
-                // Külső héj csúcspontjai
-                let vOut = getPointOnSlide(dist, a, 0); 
-                vertsOut.push(vOut.x, vOut.y, vOut.z);
-                colorsOut.push(cColor.r, cColor.g, cColor.b);
+			for (let i = 0; i <= steps; i++) {
+				const t_seg = i / steps;
+				const dist = currentDist + t_seg * segLen;
+				const props = getSlideProps(dist);
 
-                // Belső héj csúcspontjai
-                let vIn = getPointOnSlide(dist, a, 0.015);
-                vertsIn.push(vIn.x, vIn.y, vIn.z);
-                
-                // Belülre MINDIG a belső színt alkalmazzuk
-                colorsIn.push(tempInColor.r, tempInColor.g, tempInColor.b);
-            }
-        }
+				// Sima belső szín és intenzitás átmenetek számítása
+				const colPrev = new THREE.Color(props.prevInner);
+				const colCurr = new THREE.Color(props.currInner);
+				const tempInColor = colPrev.clone().lerp(colCurr, props.t);
+				const intensity = props.prevInt * (1 - props.t) + props.currInt * props.t;
+				tempInColor.multiplyScalar(Math.min(1.0, Math.max(0.0, intensity)));
 
-        for (let i = 0; i < distSteps; i++) {
-            let props = getSlideProps((i + 0.5) / distSteps * totalLen);
-            for (let j = 0; j < radSegs; j++) {
-                let a = (j / radSegs) * Math.PI * 2;
-                if (props.isOpen && a > Math.PI/4 && a < 3*Math.PI/4) continue;
+				for (let j = 0; j <= radSegs; j++) {
+					const a = (j / radSegs) * Math.PI * 2;
 
-                let row1 = i * (radSegs + 1);
-                let row2 = (i + 1) * (radSegs + 1);
-                let a_idx = row1 + j, b_idx = row2 + j, c_idx = row1 + (j + 1), d_idx = row2 + (j + 1);
-                
-                indicesOut.push(a_idx, b_idx, c_idx); 
-                indicesOut.push(b_idx, d_idx, c_idx);
+					const vOut = getPointOnSlide(dist, a, 0);
+					vertsOut.push(vOut.x, vOut.y, vOut.z);
+					colorsOut.push(cColor.r, cColor.g, cColor.b);
 
-                indicesIn.push(a_idx, c_idx, b_idx); 
-                indicesIn.push(b_idx, c_idx, d_idx);
-            }
-        }
+					const vIn = getPointOnSlide(dist, a, 0.015);
+					vertsIn.push(vIn.x, vIn.y, vIn.z);
 
-        const geoOut = new THREE.BufferGeometry();
-        geoOut.setAttribute('position', new THREE.Float32BufferAttribute(vertsOut, 3));
-        geoOut.setAttribute('color', new THREE.Float32BufferAttribute(colorsOut, 3));
-        geoOut.setIndex(indicesOut); geoOut.computeVertexNormals();
+					if (props.isOpen) {
+						colorsIn.push(cColor.r, cColor.g, cColor.b); // Nyitott résznél a belső felület is kapja meg a külső színt
+					} else {
+						colorsIn.push(tempInColor.r, tempInColor.g, tempInColor.b); // Zárt résznél a beállított belső színt használja
+					}
+				}
+			}
 
-        const geoIn = new THREE.BufferGeometry();
-        geoIn.setAttribute('position', new THREE.Float32BufferAttribute(vertsIn, 3));
-        geoIn.setAttribute('color', new THREE.Float32BufferAttribute(colorsIn, 3));
-        geoIn.setIndex(indicesIn); geoIn.computeVertexNormals();
+			for (let i = 0; i < steps; i++) {
+				const dist = currentDist + (i + 0.5) / steps * segLen;
+				const props = getSlideProps(dist);
 
-        const matOut = new THREE.MeshPhongMaterial({ vertexColors: true, side: THREE.FrontSide, shininess: 40 });
-        const matIn = new THREE.MeshPhongMaterial({ vertexColors: true, side: THREE.FrontSide, shininess: 10 });
-        
-        slideGroup.add(new THREE.Mesh(geoOut, matOut), new THREE.Mesh(geoIn, matIn));
-    }
+				for (let j = 0; j < radSegs; j++) {
+					const a = (j / radSegs) * Math.PI * 2;
+					if (props.isOpen && a > Math.PI/4 && a < 3*Math.PI/4) continue;
+
+					const row1 = i * (radSegs + 1);
+					const row2 = (i + 1) * (radSegs + 1);
+					const a_idx = row1 + j, b_idx = row2 + j, c_idx = row1 + (j + 1), d_idx = row2 + (j + 1);
+
+					indicesOut.push(a_idx, b_idx, c_idx);
+					indicesOut.push(b_idx, d_idx, c_idx);
+
+					indicesIn.push(a_idx, c_idx, b_idx);
+					indicesIn.push(b_idx, c_idx, d_idx);
+				}
+			}
+
+			const geoOut = new THREE.BufferGeometry();
+			geoOut.setAttribute('position', new THREE.Float32BufferAttribute(vertsOut, 3));
+			geoOut.setAttribute('color', new THREE.Float32BufferAttribute(colorsOut, 3));
+			geoOut.setIndex(indicesOut); geoOut.computeVertexNormals();
+
+			const geoIn = new THREE.BufferGeometry();
+			geoIn.setAttribute('position', new THREE.Float32BufferAttribute(vertsIn, 3));
+			geoIn.setAttribute('color', new THREE.Float32BufferAttribute(colorsIn, 3));
+			geoIn.setIndex(indicesIn); geoIn.computeVertexNormals();
+
+			// Ha nyitott a szakasz, a napszakot követő dinamikus anyagot társítjuk hozzá
+			const segmentMatOut = seg.shape === 'open' ? openSlideMatOut : new THREE.MeshPhongMaterial({ vertexColors: true, side: THREE.FrontSide, shininess: 40 });
+			const segmentMatIn = seg.shape === 'open' ? openSlideMatIn : new THREE.MeshPhongMaterial({ vertexColors: true, side: THREE.FrontSide, shininess: 10 });
+
+			slideGroup.add(new THREE.Mesh(geoOut, segmentMatOut), new THREE.Mesh(geoIn, segmentMatIn));
+
+			currentDist = segEnd;
+		});
+	}
 
 	window.rebuildSlide = function() {
         if(PARAMS.segments.length > 0) window.SLIDE_RAD = PARAMS.segments[0].diameter / 2; 
