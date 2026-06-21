@@ -234,6 +234,7 @@
 			case 'strips': case 'center_tris': case 'text': case 'led_displays': return 1.0;
 			case 'daylight_rings': case 'daylight_half_rings': case 'daylight_stars': case 'daylight_dots': return 1.0 * globalSunIntensity;
 			default: return 0.5;
+			case 'custom_texture': return 1.0;
 		}
 	}
 	
@@ -461,6 +462,7 @@
 	const audioCtx = new (window.AudioContext || window.webkitAudioContext)();
 	let gunBarrelLeds = [];
 	let waterCurtains = [];
+	let customTextureMaterials = [];
 	
 	const waterAlphaTex = new THREE.TextureLoader().load('https://threejs.org/examples/textures/lava/cloud.png');
 	waterAlphaTex.wrapS = waterAlphaTex.wrapT = THREE.RepeatWrapping;
@@ -543,8 +545,8 @@
 
     const STAR_SIZE_MULTIPLIER = 1.0; 
     
-    const starGeoOuter = createStarGeometry(0.025 * STAR_SIZE_MULTIPLIER, 0.01 * STAR_SIZE_MULTIPLIER); 
-    const starGeoInner = createStarGeometry(0.015 * STAR_SIZE_MULTIPLIER, 0.005 * STAR_SIZE_MULTIPLIER);
+    const starGeoOuter = createStarGeometry(0.050 * STAR_SIZE_MULTIPLIER, 0.02 * STAR_SIZE_MULTIPLIER); 
+    const starGeoInner = createStarGeometry(0.030 * STAR_SIZE_MULTIPLIER, 0.01 * STAR_SIZE_MULTIPLIER);
     let whiteDots = [];
     let mainPath, totalLen, frames;
 	
@@ -576,8 +578,20 @@
         PARAMS.segments.splice(idx, 1);
         renderUI();
     };
+	
+	window.uploadCustomTexture = function(idx, input) {
+		const file = input.files[0];
+		if (!file) return;
+		const reader = new FileReader();
+		reader.onload = function(e) {
+			PARAMS.segments[idx].customTextureBase64 = e.target.result;
+			renderUI();
+			rebuildSlide();
+		};
+		reader.readAsDataURL(file);
+	};
 
-		function renderUI() {
+	function renderUI() {
 		const container = document.getElementById('segments-container');
 		container.innerHTML = '';
 		PARAMS.segments.forEach((seg, i) => {
@@ -642,7 +656,21 @@
 					<option value="daylight_stars" ${seg.light === 'daylight_stars' ? 'selected' : ''}>Daylight: Nagy csillagok</option>
 					<option value="daylight_dots" ${seg.light === 'daylight_dots' ? 'selected' : ''}>Daylight: Nagy pöttyök</option>
 					<option value="dark" ${seg.light === 'dark' ? 'selected' : ''}>Sötét</option>
+					<option value="custom_texture" ${seg.light === 'custom_texture' ? 'selected' : ''}>Egyéni textúra</option>
 				</select>
+				
+				${seg.light === 'custom_texture' ? `
+					<div style="background:#222; padding:8px; margin-top:5px; border:1px solid #555; border-radius:4px;">
+						<label>Saját világító textúra feltöltése:</label>
+						<input type="file" accept="image/*" onchange="uploadCustomTexture(${i}, this)" style="font-size:11px;">
+						${seg.customTextureBase64 ? '<span style="color:#28a745; font-size:12px;">✓ Kép betöltve</span>' : '<span style="color:#dc3545; font-size:12px;">Nincs kép</span>'}
+						<br><br>
+						<label style="display:inline-flex; align-items:center; cursor:pointer; color:#fff;">
+							<input type="checkbox" style="width:auto; margin-right:5px;" ${seg.alwaysGlow ? 'checked' : ''} onchange="updateSeg(${i}, 'alwaysGlow', this.checked)">
+							Sötétben is világítson (nincs halványodás)
+						</label>
+					</div>
+				` : ''}
 
 				${seg.type === 'straight' ? 
 					`<label>Hossz (m)</label><input type="number" value="${seg.len}" onchange="updateSeg(${i}, 'len', parseFloat(this.value))">` :
@@ -846,6 +874,7 @@
         centerTriangles.length = 0; allDisplays = []; imageDisplays = []; turnLeds.length = 0; 
         zigzagLeds.length = 0; star2Points.length = 0; stripLeds.length = 0; 
         bgPositions.length = 0; bgIndices.length = 0; bgIdxOffset = 0; jumpscares = []; waterCurtains = [];
+		customTextureMaterials = [];
 
 		mainPath = createSlidePath();
 		totalLen = mainPath.getLength();
@@ -978,7 +1007,7 @@
 			// A felbontást a szakasz hosszához igazítjuk
 			const steps = Math.max(10, Math.floor(segLen * 15));
 
-			const vertsOut = [], vertsIn = [], indicesOut = [], indicesIn = [], colorsOut = [], colorsIn = [];
+			const vertsOut = [], vertsIn = [], indicesOut = [], indicesIn = [], colorsOut = [], colorsIn = [], uvsIn = [];
 			const cColor = new THREE.Color(seg.color || '#ffcc00');
 			const baseInColor = new THREE.Color(seg.innerColor || '#000000');
 
@@ -996,7 +1025,11 @@
 
 				for (let j = 0; j <= radSegs; j++) {
 					const a = (j / radSegs) * Math.PI * 2;
-
+					// U: Textúra szélessége -> pontosan 1x van kinyújtva a teljes szakasz hosszában
+					const u = t_seg;
+					// V: Textúra magassága -> körbeöleli a kerületet pontosan egyszer (0-tól 1-ig)
+					const v = j / radSegs;
+					uvsIn.push(u, v);
 					const vOut = getPointOnSlide(dist, a, 0);
 					vertsOut.push(vOut.x, vOut.y, vOut.z);
 					colorsOut.push(cColor.r, cColor.g, cColor.b);
@@ -1005,9 +1038,9 @@
 					vertsIn.push(vIn.x, vIn.y, vIn.z);
 
 					if (props.isOpen) {
-						colorsIn.push(cColor.r, cColor.g, cColor.b); // Nyitott résznél a belső felület is kapja meg a külső színt
+						colorsIn.push(cColor.r, cColor.g, cColor.b); 
 					} else {
-						colorsIn.push(tempInColor.r, tempInColor.g, tempInColor.b); // Zárt résznél a beállított belső színt használja
+						colorsIn.push(tempInColor.r, tempInColor.g, tempInColor.b); 
 					}
 				}
 			}
@@ -1035,17 +1068,43 @@
 			const geoOut = new THREE.BufferGeometry();
 			geoOut.setAttribute('position', new THREE.Float32BufferAttribute(vertsOut, 3));
 			geoOut.setAttribute('color', new THREE.Float32BufferAttribute(colorsOut, 3));
-			geoOut.setIndex(indicesOut); geoOut.computeVertexNormals();
+			geoOut.setIndex(indicesOut); 
+			geoOut.computeVertexNormals();
 
 			const geoIn = new THREE.BufferGeometry();
 			geoIn.setAttribute('position', new THREE.Float32BufferAttribute(vertsIn, 3));
 			geoIn.setAttribute('color', new THREE.Float32BufferAttribute(colorsIn, 3));
-			geoIn.setIndex(indicesIn); geoIn.computeVertexNormals();
+			geoIn.setAttribute('uv', new THREE.Float32BufferAttribute(uvsIn, 2));
+			geoIn.setIndex(indicesIn); 
+			geoIn.computeVertexNormals();
 
-			// Ha nyitott a szakasz, a napszakot követő dinamikus anyagot társítjuk hozzá
+			// Külső anyag (mindig az eredeti színeket használja)
 			const segmentMatOut = seg.shape === 'open' ? openSlideMatOut : new THREE.MeshPhongMaterial({ vertexColors: true, side: THREE.FrontSide, shininess: 40 });
-			const segmentMatIn = seg.shape === 'open' ? openSlideMatIn : new THREE.MeshPhongMaterial({ vertexColors: true, side: THREE.FrontSide, shininess: 10 });
 
+			// Belső anyag (ha van textúra, azt használja, ha nincs, marad az eredeti belső szín)
+			let segmentMatIn;
+			if (seg.shape === 'open') {
+				segmentMatIn = openSlideMatIn;
+			} else if (seg.light === 'custom_texture' && seg.customTextureBase64) {
+				const tex = new THREE.TextureLoader().load(seg.customTextureBase64);
+				tex.wrapS = THREE.RepeatWrapping;
+				tex.wrapT = THREE.RepeatWrapping;
+				tex.colorSpace = THREE.SRGBColorSpace; // <-- Ez garantálja, hogy a kép nem lesz túlexponált/fakó
+				
+				// A MeshBasicMaterial nem reagál a külső fényekre, csak tisztán a textúrát mutatja.
+				// Az 1.0-ás (0xffffff) szín esetén pont olyan, mint a képnézegetőben.
+				segmentMatIn = new THREE.MeshBasicMaterial({ 
+					map: tex, 
+					color: 0xffffff, 
+					side: THREE.FrontSide
+				});
+				segmentMatIn.userData = { alwaysGlow: seg.alwaysGlow };
+				customTextureMaterials.push(segmentMatIn);
+			} else {
+				segmentMatIn = new THREE.MeshPhongMaterial({ vertexColors: true, side: THREE.FrontSide, shininess: 10 });
+			}
+
+			// Itt adjuk hozzá ténylegesen a csövet a jelenethez!
 			slideGroup.add(new THREE.Mesh(geoOut, segmentMatOut), new THREE.Mesh(geoIn, segmentMatIn));
 
 			currentDist = segEnd;
@@ -2525,6 +2584,14 @@
 			}
 			
 			texture.needsUpdate = true;
+		});
+		customTextureMaterials.forEach(mat => {
+			// Ha mindig világít, az intenzitás 1.0 (eredeti kép). 
+			// Ha halványodik, akkor beszorozzuk a napszak értékével (max 1.0, min 0.02)
+			const intensity = mat.userData.alwaysGlow ? 1.0 : Math.max(0.02, globalSunIntensity);
+			
+			// A setScalar a fehér (1.0) színt viszi lefelé szürkébe/feketébe, ami elsötétíti a képet.
+			mat.color.setScalar(intensity);
 		});
 	}
 
