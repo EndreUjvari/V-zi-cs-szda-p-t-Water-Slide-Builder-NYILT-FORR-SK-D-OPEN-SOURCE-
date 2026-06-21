@@ -189,21 +189,6 @@
         openSlideMatIn.color.setRGB(openBright, openBright, openBright);
     }
 
-	window.addSegmentUI = function() {
-        const lastSeg = PARAMS.segments.length > 0 ? PARAMS.segments[PARAMS.segments.length - 1] : null;
-        PARAMS.segments.push({ 
-            type: 'straight', 
-            len: 5,
-            diameter: lastSeg ? lastSeg.diameter : 2.0,
-            slope: lastSeg ? lastSeg.slope : 0.06,
-            shape: lastSeg ? lastSeg.shape : 'circle',
-            color: lastSeg ? lastSeg.color : '#ffcc00',
-            innerColor: lastSeg ? lastSeg.innerColor : '#000000',
-            light: lastSeg ? lastSeg.light : 'rings'
-        });
-        renderUI();
-    };
-
 	window.removeSegment = function(idx) {
         PARAMS.segments.splice(idx, 1);
         renderUI();
@@ -570,9 +555,46 @@
     document.body.appendChild(renderer.domElement);
 	
 	window.addSegmentUI = function() {
-        PARAMS.segments.push({ type: 'straight', len: 5 });
-        renderUI();
-    };
+		// Megnézzük, van-e már elem a listában
+		const lastSeg = PARAMS.segments.length > 0 ? PARAMS.segments[PARAMS.segments.length - 1] : null;
+		
+		if (lastSeg) {
+			// Ha van utolsó elem, pontos másolatot készítünk róla
+			PARAMS.segments.push({
+				type: lastSeg.type || 'straight',
+				len: lastSeg.len !== undefined ? lastSeg.len : 5,
+				radius: lastSeg.radius !== undefined ? lastSeg.radius : 4,
+				angle: lastSeg.angle !== undefined ? lastSeg.angle : 90,
+				dir: lastSeg.dir || 'left',
+				diameter: lastSeg.diameter !== undefined ? lastSeg.diameter : 2.0,
+				slope: lastSeg.slope !== undefined ? lastSeg.slope : 0.055,
+				shape: lastSeg.shape || 'circle',
+				color: lastSeg.color || '#ffcc00',
+				innerColor: lastSeg.innerColor || '#000000',
+				light: lastSeg.light || 'rings',
+				customTextureBase64: lastSeg.customTextureBase64 || null,
+				alwaysGlow: lastSeg.alwaysGlow !== undefined ? lastSeg.alwaysGlow : false
+			});
+		} else {
+			// Ha teljesen üres a lista, az alapértelmezett értékekkel indulunk
+			PARAMS.segments.push({ 
+				type: 'straight', 
+				len: 5,
+				radius: 4,
+				angle: 90,
+				dir: 'left',
+				diameter: 2.0,
+				slope: 0.055,
+				shape: 'circle',
+				color: '#ffcc00',
+				innerColor: '#000000',
+				light: 'rings',
+				customTextureBase64: null,
+				alwaysGlow: false
+			});
+		}
+		renderUI();
+	};
 	
 	window.removeSegment = function(idx) {
         PARAMS.segments.splice(idx, 1);
