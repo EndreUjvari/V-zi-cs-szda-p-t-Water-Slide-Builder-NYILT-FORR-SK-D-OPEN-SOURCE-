@@ -108,7 +108,7 @@
 		segments: [
 			{ type: 'straight', len: 6, light: 'strips', diameter: 2.0, slope: 0.06, shape: 'circle', color: '#ff7700', innerColor: '#000000' },
 			{ type: 'turn', radius: 5, angle: 90, dir: 'left', light: 'rings', diameter: 2.0, slope: 0.06, shape: 'circle', color: '#ff7700', innerColor: '#000000' },
-			{ type: 'straight', len: 5, light: 'dark', diameter: 2.0, slope: 0.06, shape: 'open', color: '#ff7700', innerColor: '#000000' },
+			{ type: 'straight', len: 6, light: 'dark', diameter: 2.0, slope: 0.06, shape: 'open', color: '#ff7700', innerColor: '#000000' },
 			{ type: 'turn', radius: 6, angle: 120, dir: 'right', light: 'daylight_dots', diameter: 2.0, slope: 0.06, shape: 'circle', color: '#ff7700', innerColor: '#000000', lanes: 3 }
 		]
 	};
@@ -116,10 +116,43 @@
 	function bendGeometryToSlide(baseGeo, d, baseAngle, offsetDist) {
 		const geo = baseGeo.clone();
 		const posAttr = geo.attributes.position;
+		
+		// Helyi bázis lekérése egyetlen pontban (d), hogy elkerüljük a hosszanti csavarodást
+		const clampedDist = Math.max(0, Math.min(totalLen, d));
+		const t = clampedDist / totalLen;
+		const pos = mainPath.getPointAt(t);
+		const T = mainPath.getTangentAt(t).normalize();
+
+		const worldUp = new THREE.Vector3(0, 1, 0);
+		let B = new THREE.Vector3().crossVectors(T, worldUp).normalize();
+		if (B.lengthSq() < 0.0001) {
+			const altUp = new THREE.Vector3(0, 0, 1);
+			B = new THREE.Vector3().crossVectors(T, altUp).normalize();
+		}
+		const N = new THREE.Vector3().crossVectors(B, T).normalize();
+
+		let props = getSlideProps(clampedDist);
+		const r = (props.diameter / 2) - offsetDist;
+
 		for (let i = 0; i < posAttr.count; i++) {
 			const lx = posAttr.getX(i);
 			const ly = posAttr.getY(i);
-			const bentPos = getPointOnSlide(d + lx, baseAngle - (ly / window.SLIDE_RAD), offsetDist);
+			
+			// Szög kiszámítása a cső ívén
+			const angle = baseAngle - (ly / (props.diameter / 2));
+			
+			// Keresztmetszet pontok lekérése a dinamikus formához
+			let p1 = getShapeXY(props.shape1, r, angle, props.lanes1);
+			let p2 = getShapeXY(props.shape2, r, angle, props.lanes2);
+			let ox = p1.x * (1 - props.t) + p2.x * props.t;
+			let oy = p1.y * (1 - props.t) + p2.y * props.t;
+
+			// Pont kiszámítása a helyi T, B, N vektorok alapján (tökéletes koncentrikus illeszkedés)
+			const bentPos = pos.clone()
+				.add(B.clone().multiplyScalar(ox))
+				.add(N.clone().multiplyScalar(oy))
+				.add(T.clone().multiplyScalar(lx));
+
 			posAttr.setXYZ(i, bentPos.x, bentPos.y, bentPos.z);
 		}
 		geo.computeVertexNormals();
@@ -356,7 +389,23 @@
         let cur = 0;
         for (let i = 0; i < PARAMS.segments.length; i++) {
             let seg = PARAMS.segments[i];
-            let slen = seg.type === 'straight' ? (seg.len || 0.1) : ((parseFloat(seg.radius) || 0.1) * Math.abs(parseFloat(seg.angle) || 90) * Math.PI / 180);
+            let slen;
+            if (seg.type === 'straight') {
+                slen = seg.len || 0.1;
+            } else if (seg.type === 'space_bowl') {
+                const bowlD = parseFloat(seg.bowlDiameter) || 8.0;
+                const rotations = parseFloat(seg.rotations) || 2.0;
+                const R_tube = (seg.diameter || 2.0) / 2;
+                const R_start = (bowlD / 2) - R_tube * 1.50; // További 15 cm-rel beljebb toljuk a csövet
+                const R_exit = 0.0;
+                const avgR = (R_start + R_exit) / 2;
+                const sweep = Math.PI * 1 * rotations;
+                const spiralLen = avgR * sweep;
+                const dropLen = 0.1; // Minimális zuhanásmentes kivezető magasság (10 cm)
+                slen = spiralLen + dropLen;
+            } else {
+                slen = (parseFloat(seg.radius) || 0.1) * Math.abs(parseFloat(seg.angle) || 90) * Math.PI / 180;
+            }
             
             if (dist <= cur + slen + 0.0001 || i === PARAMS.segments.length - 1) {
                 let prev = i > 0 ? PARAMS.segments[i-1] : seg;
@@ -454,7 +503,12 @@
 		const T = mainPath.getTangentAt(t).normalize();
 
 		const worldUp = new THREE.Vector3(0, 1, 0);
-		const B = new THREE.Vector3().crossVectors(T, worldUp).normalize();
+		let B = new THREE.Vector3().crossVectors(T, worldUp).normalize();
+		if (B.lengthSq() < 0.0001) {
+			// Ha a cső függőleges (zuhanás), alternatív referencia-vektort használunk
+			const altUp = new THREE.Vector3(0, 0, 1);
+			B = new THREE.Vector3().crossVectors(T, altUp).normalize();
+		}
 		const N = new THREE.Vector3().crossVectors(B, T).normalize();
 
         // Itt átadjuk a tippet, hogy pontosan vágja el a határokat
@@ -551,6 +605,7 @@
     const multiColors = [0xff0000, 0x00ff00, 0xffff00, 0x0000ff]; 
 	const faintOrangeMat = new THREE.MeshBasicMaterial({ side: THREE.DoubleSide });    
     const daylightDotGeoBase = new THREE.CircleGeometry(0.20, 32);
+    const daylightTopDotGeoBase = new THREE.CircleGeometry(0.075, 32); // ÚJ: 15 cm átmérőjű pöttyök
     const daylightStarGeoBase = createStarGeometry(0.30, 0.12);
     const daylightRingGeoBase = new THREE.RingGeometry(0.12, 0.20, 32);
 	const openSlideMatOut = new THREE.MeshPhongMaterial({ vertexColors: true, side: THREE.FrontSide, shininess: 40 });
@@ -753,8 +808,29 @@
 					<option value="daylight_half_rings" ${seg.light === 'daylight_half_rings' ? 'selected' : ''}>Daylight: Fél fénygyűrűk</option>
 					<option value="daylight_stars" ${seg.light === 'daylight_stars' ? 'selected' : ''}>Daylight: Nagy csillagok</option>
 					<option value="daylight_dots" ${seg.light === 'daylight_dots' ? 'selected' : ''}>Daylight: Nagy pöttyök</option>
+					<option value="daylight_top_dots" ${seg.light === 'daylight_top_dots' ? 'selected' : ''}>Daylight: Mennyezeti pöttyök (15 cm)</option>
 					<option value="custom_texture" ${seg.light === 'custom_texture' ? 'selected' : ''}>Egyéni textúra</option>
 				</select>
+				
+				${seg.light === 'led_displays' ? `
+					<div style="background:#222; padding:8px; margin-top:5px; border:1px solid #555; border-radius:4px;">
+						<label style="color:#0088ff; font-weight:bold;">LED Kijelző Beállítások</label>
+						<label>Minta</label>
+						<select onchange="updateSeg(${i}, 'ledPattern', this.value)">
+							<option value="all" ${seg.ledPattern === 'all' || !seg.ledPattern ? 'selected' : ''}>Mindegyik vegyesen</option>
+							<option value="smiley" ${seg.ledPattern === 'smiley' ? 'selected' : ''}>Smiley</option>
+							<option value="coil" ${seg.ledPattern === 'coil' ? 'selected' : ''}>Spirál / Tekercs</option>
+							<option value="star" ${seg.ledPattern === 'star' ? 'selected' : ''}>Csillag</option>
+						</select>
+						<label>Elrendezés</label>
+						<select onchange="updateSeg(${i}, 'ledLayout', this.value)">
+							<option value="classic" ${seg.ledLayout === 'classic' || !seg.ledLayout ? 'selected' : ''}>Klasszikus</option>
+							<option value="front_r_back_l" ${seg.ledLayout === 'front_r_back_l' ? 'selected' : ''}>Egy elöl jobb, egy hátul bal (eredeti átmérő)</option>
+							<option value="back_r_front_l" ${seg.ledLayout === 'back_r_front_l' ? 'selected' : ''}>Egy hátul jobb, egy elöl bal (eredeti átmérő)</option>
+							<option value="ceiling_double" ${seg.ledLayout === 'ceiling_double' ? 'selected' : ''}>Egy a mennyezeten (kétszeres átmérő)</option>
+						</select>
+					</div>
+				` : ''}
 				
 				${seg.light === 'custom_texture' ? `
 					<div style="background:#222; padding:8px; margin-top:5px; border:1px solid #555; border-radius:4px;">
@@ -786,6 +862,14 @@
 
 	window.updateSeg = function(i, prop, val) {
         PARAMS.segments[i][prop] = val;
+        
+        if (prop === 'type' && val === 'space_bowl') {
+            if (!PARAMS.segments[i].bowlDiameter) PARAMS.segments[i].bowlDiameter = 8.0;
+            if (!PARAMS.segments[i].bowlStyle) PARAMS.segments[i].bowlStyle = 'open';
+            if (!PARAMS.segments[i].rotations) PARAMS.segments[i].rotations = 2.0;
+            if (!PARAMS.segments[i].exitDrop) PARAMS.segments[i].exitDrop = 2.5;
+            if (!PARAMS.segments[i].dir) PARAMS.segments[i].dir = 'left';
+        }
         
         if (prop === 'shape' && val === 'multi' && !PARAMS.segments[i].lanes) {
             PARAMS.segments[i].lanes = 3;
@@ -1112,6 +1196,75 @@
                 currY = nextY;
 				totalS += curveLen;
 			}
+			else if (seg.type === 'space_bowl') {
+				const bowlD = parseFloat(seg.bowlDiameter) || 8.0;
+				const rotations = parseFloat(seg.rotations) || 2.0;
+				const slope = seg.slope !== undefined ? seg.slope : 0.055;
+				const isLeft = (seg.dir === 'left');
+				
+				const R_tube = (seg.diameter || 2.0) / 2;
+				const R_start = (bowlD / 2) - R_tube * 1.1; // Beljebb hozzuk a spirál kezdetét
+				const R_exit = 0.0; // Egészen a tál közepéig spirálozik
+				
+				const centerAngle = currYaw + (isLeft ? -Math.PI/2 : Math.PI/2);
+				const avgR = (R_start + R_exit) / 2;
+				const sweep = (isLeft ? -1 : 1) * Math.PI * 1 * rotations;
+				const spiralLen = avgR * Math.abs(sweep);
+				const spiralDrop = Math.max(R_tube + 0.5, spiralLen * slope);
+				
+				// A tál pontos középpontja (Y tengelyen a lefolyó magasságában)
+				const center = new THREE.Vector3(
+					currP.x + Math.cos(centerAngle) * R_start, 
+					currY - spiralDrop, 
+					currP.z + Math.sin(centerAngle) * R_start
+				);
+				
+				const startAngle = Math.atan2(currP.z - center.z, currP.x - center.x);
+				
+				// Analitikus adatok elmentése a tökéletes illesztéshez az addDecorations-ben
+				seg.computedCenter = center.clone();
+				seg.computedStartAngle = startAngle;
+				seg.computedSpiralDrop = spiralDrop;
+				seg.computedRStart = R_start;
+				seg.computedStartPos = new THREE.Vector3(currP.x, currY, currP.z);
+				seg.computedStartTangent = new THREE.Vector3(Math.cos(currYaw), -slope, Math.sin(currYaw)).normalize();
+
+				const spiralSteps = 100;
+				let lastSpiralPoint = currP.clone();
+				lastSpiralPoint.y = currY;
+
+				const bowlHeight = Math.max(2.0, spiralDrop); // Visszaállítva a természetes, arányos tálmagasságra
+				for (let i = 1; i <= spiralSteps; i++) {
+					const f = i / spiralSteps;
+					const a = startAngle + f * sweep;
+					const r = R_start * (1 - f) + R_exit * f;
+					
+					const pY = currY * (1 - f) + (center.y) * f;
+					
+					const p = new THREE.Vector3(
+						center.x + Math.cos(a) * r,
+						pY,
+						center.z + Math.sin(a) * r
+					);
+					path.add(new THREE.LineCurve3(lastSpiralPoint.clone(), p.clone()));
+					lastSpiralPoint.copy(p);
+				}
+				
+				// --- FÜGGŐLEGES ZUHANÁS (LEFOLYÓ) ---
+				const dropLen = 0.1; // Sima zuhanásmentes közvetlen csatlakozás (10 cm-es átmenet)
+				const dropEndP = lastSpiralPoint.clone();
+				dropEndP.y -= dropLen;
+				
+				path.add(new THREE.LineCurve3(lastSpiralPoint.clone(), dropEndP.clone()));
+				
+				currP.copy(dropEndP);
+				currP.y = 0; 
+				currY = dropEndP.y;
+				
+				const lastSpiralYaw = startAngle + sweep + (isLeft ? -Math.PI/2 : Math.PI/2);
+				currYaw = lastSpiralYaw;
+				seg.computedExitTangent = new THREE.Vector3(0, -1, 0); // Függőlegesen esik ki
+			}
 		});
 		return path;
 	}
@@ -1120,21 +1273,41 @@
 		let currentDist = 0;
 
 		PARAMS.segments.forEach((seg, segIdx) => {
-			const segLen = (seg.type === 'straight') ? (seg.len || 0.1) : ((parseFloat(seg.radius) || 0.1) * (Math.abs(parseFloat(seg.angle)) * Math.PI / 180));
+			// Kiszámítjuk a pontos szakaszhosszat a típus alapján
+			const segLen = (seg.type === 'straight') ? (seg.len || 0.1) : 
+			               (seg.type === 'space_bowl') ? (
+			                   (() => {
+			                       const bowlD = parseFloat(seg.bowlDiameter) || 8.0;
+			                       const rotations = parseFloat(seg.rotations) || 2.0;
+			                       const R_tube = (seg.diameter || 2.0) / 2;
+			                       const R_start = (bowlD / 2) - R_tube * 1.25; // Frissített sugár
+			                       const avgR = R_start / 2;
+			                       const sweep = Math.PI * 1 * rotations;
+			                       const spiralLen = avgR * sweep;
+			                       const dropLen = 0.1;
+			                       return spiralLen + dropLen;
+			                   })()
+			               ) :
+			               ((parseFloat(seg.radius) || 0.1) * (Math.abs(parseFloat(seg.angle)) * Math.PI / 180));
 			const segEnd = currentDist + segLen;
 
+			// --- 1. SPACE BOWL ESETÉN ÁTUGRÁS (Nem rajzolunk csövet a tál spirálján belül) ---
+			if (seg.type === 'space_bowl') {
+				currentDist = segEnd;
+				return;
+			}
+
+			// --- 2. ÁLTALÁNOS CSŐ GENERÁLÁSA ---
 			const radSegs = 120;
 			const steps = Math.max(10, Math.floor(segLen * 15));
 
 			const vertsOut = [], vertsIn = [], indicesOut = [], indicesIn = [], colorsOut = [], colorsIn = [], uvsIn = [];
 			const cColor = new THREE.Color(seg.color || '#ffcc00');
-			const baseInColor = new THREE.Color(seg.innerColor || '#000000');
 
 			for (let i = 0; i <= steps; i++) {
 				const t_seg = i / steps;
 				const dist = currentDist + t_seg * segLen;
                 
-                // Kényszerített szakasz-azonosító
 				const props = getSlideProps(dist, segIdx);
 
 				const colPrev = new THREE.Color(props.prevInner);
@@ -1149,7 +1322,6 @@
 					const v = j / radSegs;
 					uvsIn.push(u, v);
 					
-                    // A segIdx paraméter garantálja, hogy nincs fals összekötés (fal) a csövek között
 					const vOut = getPointOnSlide(dist, a, 0, segIdx);
 					vertsOut.push(vOut.x, vOut.y, vOut.z);
 					colorsOut.push(cColor.r, cColor.g, cColor.b);
@@ -1171,9 +1343,7 @@
 				for (let j = 0; j < radSegs; j++) {
 					const a = (j / radSegs) * Math.PI * 2;
 					
-					// Többpályásnál csak az alsó tálcát rendereljük, nincs hatalmas oldalfala
 					if (isMulti && a > 0.01 && a < Math.PI - 0.01) continue;
-					// Sima nyitott félcső logikája
 					else if (props.isOpen && !isMulti && a > Math.PI/4 && a < 3*Math.PI/4) continue;
 
 					const row1 = i * (radSegs + 1);
@@ -1312,19 +1482,32 @@
 		}
 		allRings.push(ledGroup);
 	}
-	
 	function addDecorations() {
 		let currentDist = 0;
 		const worldUp = new THREE.Vector3(0, 1, 0);
 
-		PARAMS.segments.forEach(seg => {
-			const segLen = (seg.type === 'straight') ? (seg.len || 0.1) : ((parseFloat(seg.radius) || 0.1) * (Math.abs(parseFloat(seg.angle)) * Math.PI / 180));
+		PARAMS.segments.forEach((seg, segIdx) => {
+			const segLen = (seg.type === 'straight') ? (seg.len || 0.1) :
+			               (seg.type === 'space_bowl') ? (
+			                   (() => {
+			                       const bowlD = parseFloat(seg.bowlDiameter) || 8.0;
+			                       const rotations = parseFloat(seg.rotations) || 2.0;
+			                       const R_tube = (seg.diameter || 2.0) / 2;
+			                       const R_start = (bowlD / 2) - R_tube;
+			                       const avgR = R_start / 2;
+			                       const sweep = Math.PI * 1 * rotations;
+			                       const spiralLen = avgR * sweep;
+			                       const dropLen = 0.1;
+			                       return spiralLen + dropLen;
+			                   })()
+			               ) :
+			               ((parseFloat(seg.radius) || 0.1) * (Math.abs(parseFloat(seg.angle)) * Math.PI / 180));
 			const segEnd = currentDist + segLen;
 
-            
             window.SLIDE_RAD = (seg.diameter || 2.0) / 2;
 
-            if (seg.shape === 'open' || seg.shape === 'multi') {
+			// Csak a tiszta nyitott és többpályás szakaszokat ugorjuk át teljesen
+            if ((seg.shape === 'open' || seg.shape === 'multi') && seg.type !== 'space_bowl') {
                 currentDist = segEnd;
                 return;
             }
@@ -1618,25 +1801,29 @@
 				slideGroup.add(textMesh);
 			}
 			else if (seg.light === 'led_displays') {
-				// Segédfüggvény a kijelzők legyártásához a kért aszimmetriák alapján
-				const createLEDDisplayAt = (d, baseAngle, id) => {
-					// Halvány háttér - beljebb hozva a cső falától (0.025-ös offset = 1 cm-es lebegés a térben)
-					const bgGeo = bendGeometryToSlide(new THREE.CircleGeometry(0.35, 32), d, baseAngle, 0.025);
+				const createLEDDisplayAt = (d, baseAngle, id, customRadius = 0.335) => {
+					const bgRadius = customRadius * (0.35 / 0.335);
+					// Háttér offset: 0.022 (közelebb a cső falához)
+					const bgGeo = bendGeometryToSlide(new THREE.CircleGeometry(bgRadius, 32), d, baseAngle, 0.022);
 					const bgMesh = new THREE.Mesh(bgGeo, faintOrangeMat);
 					slideGroup.add(bgMesh);
 
-					// Kijelző rajzfelület
 					const canvas = document.createElement('canvas');
 					canvas.width = 512; canvas.height = 512;
 					const ctx = canvas.getContext('2d');
 					const texture = new THREE.CanvasTexture(canvas);
 					const mat = new THREE.MeshBasicMaterial({ map: texture, transparent: true, side: THREE.DoubleSide });
 					
-					// LED Kijelző - még beljebb tolva, pontosan 2 mm-rel a lebegő háttér előtt (0.027-es offset helyett a kódodban lévő 0.030 stabilabb lebegést ad)
-					const geo = bendGeometryToSlide(displayGeoBase, d, baseAngle, 0.030);
+					const displayGeo = new THREE.CircleGeometry(customRadius, 32);
+					// LED felület offset: 0.032 (beljebb a cső belseje felé)
+					const geo = bendGeometryToSlide(displayGeo, d, baseAngle, 0.032);
 					const mesh = new THREE.Mesh(geo, mat);
 					
-					let pType = (seg.type === 'turn') ? 'star' : (Math.random() > 0.4 ? 'coil' : 'smiley');
+					let pType = seg.ledPattern || 'all';
+					if (pType === 'all') {
+						pType = (id % 3 === 0) ? 'smiley' : ((id % 3 === 1) ? 'coil' : 'star');
+					}
+					
 					mesh.userData = { 
 						canvas: canvas, ctx: ctx, texture: texture, 
 						patternType: pType, offset: d + id 
@@ -1646,50 +1833,61 @@
 					slideGroup.add(mesh);
 				};
 
-				if (seg.type === 'turn') {
-					// --- KANYAR LOGIKA ---
-					// Nyolcadkörönként (45 fokonként) osztjuk le
-					const sectors = Math.max(1, Math.round(seg.angle / 30));
-					const displaysPerSector = (seg.radius > 4.0) ? 3 : 2; // Nagyobb ívben 3, kisebb ívben 2
-					const totalDisplays = sectors * displaysPerSector;
+				const layout = seg.ledLayout || 'classic';
+				if (layout === 'classic') {
+					if (seg.type === 'turn') {
+						const sectors = Math.max(1, Math.round(seg.angle / 30));
+						const displaysPerSector = (seg.radius > 4.0) ? 3 : 2;
+						const totalDisplays = sectors * displaysPerSector;
 
-					for (let i = 0; i < totalDisplays; i++) {
-						const t_turn = (i + 0.5) / totalDisplays;
-						const d = currentDist + t_turn * segLen;
-						const baseAngle = (i % 2 === 0) ? (Math.PI / 4) : (3 * Math.PI / 4);
-						createLEDDisplayAt(d, baseAngle, i);
+						for (let i = 0; i < totalDisplays; i++) {
+							const t_turn = (i + 0.5) / totalDisplays;
+							const d = currentDist + t_turn * segLen;
+							const baseAngle = (i % 2 === 0) ? (Math.PI / 4) : (3 * Math.PI / 4);
+							createLEDDisplayAt(d, baseAngle, i);
+						}
+					} 
+					else if (seg.type === 'straight') {
+						if (segLen <= 2.0) {
+							const d1 = currentDist + 0.35;
+							const d2 = currentDist + segLen - 0.35;
+							createLEDDisplayAt(d1, Math.PI / 2, 0);
+							createLEDDisplayAt(d2, Math.PI / 2, 1);
+						} else {
+							const epsilon = 0.35; 
+							const dLeft0 = currentDist + epsilon;
+							const dLeft1 = currentDist + segLen * 0.5;
+							const dLeft2 = currentDist + segLen - epsilon;
+
+							createLEDDisplayAt(dLeft0, Math.PI / 4, 0);
+							createLEDDisplayAt(dLeft1, Math.PI / 4, 1);
+							createLEDDisplayAt(dLeft2, Math.PI / 4, 2);
+
+							const dRight0 = (dLeft0 + dLeft1) / 2;
+							const dRight1 = (dLeft1 + dLeft2) / 2;
+
+							createLEDDisplayAt(dRight0, 3 * Math.PI / 4, 3);
+							createLEDDisplayAt(dRight1, 3 * Math.PI / 4, 4);
+						}
 					}
-				} 
-				else if (seg.type === 'straight') {
-					// --- EGYENES LOGIKA ---
-					if (segLen <= 2.0) {
-						// Rövid egyenes (<= 2m): 2 darab legfelül, a széleik az illesztésekhez közel (15 cm távolságra a szélektől)
-						const d1 = currentDist + 0.35;
-						const d2 = currentDist + segLen - 0.35;
-						createLEDDisplayAt(d1, Math.PI / 2, 0);
-						createLEDDisplayAt(d2, Math.PI / 2, 1);
-					} else {
-						// Hosszabb egyenes (> 2m): 
-						// A kijelzők háttér-sugara 0.35 méter. Ennyivel toljuk beljebb a szélsőket,
-						// így a szélük (és nem a közepük) érintkezik pontosan az illesztési vonallal.
-						const epsilon = 0.35; 
-
-						// JAVÍTOTT: 3 db a BAL oldalon (Math.PI / 4)
-						const dLeft0 = currentDist + epsilon;               // Bal első szélével az indító illesztésen
-						const dLeft1 = currentDist + segLen * 0.5;          // Bal középső
-						const dLeft2 = currentDist + segLen - epsilon;      // Bal hátsó szélével a záró illesztésen
-
-						createLEDDisplayAt(dLeft0, Math.PI / 4, 0);
-						createLEDDisplayAt(dLeft1, Math.PI / 4, 1);
-						createLEDDisplayAt(dLeft2, Math.PI / 4, 2);
-
-						// JAVÍTOTT: 2 db a JOBB oldalon (3 * Math.PI / 4), pontosan a balosak mértani közepeiben:
-						const dRight0 = (dLeft0 + dLeft1) / 2;              // Első és második balos között
-						const dRight1 = (dLeft1 + dLeft2) / 2;              // Második és harmadik balos között
-
-						createLEDDisplayAt(dRight0, 3 * Math.PI / 4, 3);
-						createLEDDisplayAt(dRight1, 3 * Math.PI / 4, 4);
-					}
+				} else if (layout === 'front_r_back_l') {
+					// Elöl jobb oldalt (3 * Math.PI / 4), hátul bal oldalt (Math.PI / 4)
+					createLEDDisplayAt(currentDist + segLen * 0.25, 3 * Math.PI / 4, 0);
+					createLEDDisplayAt(currentDist + segLen * 0.75, Math.PI / 4, 1);
+				} else if (layout === 'back_r_front_l') {
+					// Hátul jobb oldalt (3 * Math.PI / 4), elöl bal oldalt (Math.PI / 4)
+					createLEDDisplayAt(currentDist + segLen * 0.75, 3 * Math.PI / 4, 0);
+					createLEDDisplayAt(currentDist + segLen * 0.25, Math.PI / 4, 1);
+				} else if (layout === 'ceiling_double') {
+					// Mennyezeten (Math.PI / 2), kétszeres átmérővel
+					createLEDDisplayAt(currentDist + segLen * 0.5, Math.PI / 2, 0, 0.335 * 2);
+				}
+			}
+			else if (seg.light === 'daylight_top_dots') {
+				// ÚJ: Fehér mennyezeti pöttyök (15 cm átmérővel, 80 cm-enként a csúszda tetején)
+				for (let d = currentDist + 0.4; d < segEnd; d += 0.8) {
+					const bentGeo = bendGeometryToSlide(daylightTopDotGeoBase, d, Math.PI / 2, 0.030);
+					slideGroup.add(new THREE.Mesh(bentGeo, daylightMat));
 				}
 			}
 			else if (seg.light === 'jumpscare') {
@@ -1800,6 +1998,52 @@
 
 				waterCurtains.push(mesh);
 				slideGroup.add(mesh);
+				
+				const R = props.diameter / 2;
+				const extColor = seg.color || '#ffcc00';
+				const extMat = new THREE.MeshPhongMaterial({ color: extColor, shininess: 40 });
+
+				// 1. Szilárd vízfüggöny burkolat (cső tetejétől a keret tetejéig szilárd, pontos szélességgel)
+				const archShape = new THREE.Shape();
+				archShape.moveTo(-R, R + 0.3); // Bal felső sarok (pontosan a csúszda szélénél, 30 cm-rel a teteje felett)
+				archShape.lineTo(R, R + 0.3);  // Jobb felső sarok
+				archShape.lineTo(R, 0);        // Jobb szél a cső középvonalánál
+
+				// Íves rész kirajzolása a cső külső palástja mentén (jobbról balra haladva)
+				const arcSegments = 32;
+				for (let i = 0; i <= arcSegments; i++) {
+					const theta = (i / arcSegments) * Math.PI;
+					const ax = R * Math.cos(theta);
+					const ay = R * Math.sin(theta);
+					archShape.lineTo(ax, ay);
+				}
+				archShape.lineTo(-R, R + 0.3); // Vissza a bal felső sarokba
+
+				const extrudeSettings = { depth: 0.1, bevelEnabled: false };
+				const archGeo = new THREE.ExtrudeGeometry(archShape, extrudeSettings);
+				archGeo.translate(0, 0, -0.05); // Központosítás a Z-tengelyen (vastagság felezése)
+
+				const archMesh = new THREE.Mesh(archGeo, extMat);
+				archMesh.position.copy(pos);
+				archMesh.lookAt(pos.clone().add(T));
+				slideGroup.add(archMesh);
+
+				// 2. Vetítő doboz (1 méterrel a vízfüggöny után)
+				const dProj = d + 1.0;
+				if (dProj <= totalLen) {
+					const tProj = dProj / totalLen;
+					const posProj = mainPath.getPointAt(tProj);
+					const TProj = mainPath.getTangentAt(tProj).normalize();
+
+					// 40 cm széles, 20 cm magas, 50 cm hosszú téglatest
+					const projBox = new THREE.Mesh(new THREE.BoxGeometry(0.4, 0.2, 0.5), extMat);
+					projBox.position.copy(posProj);
+					projBox.lookAt(posProj.clone().add(TProj));
+					
+					// Felemelés a cső külső ívére, belógás nélkül
+					projBox.translateY(R + 0.09); 
+					slideGroup.add(projBox);
+				}
 			}
 			else if (seg.light === 'daylight_dots') {
 				for (let d = currentDist + 0.6; d < segEnd; d += 1.2) {
@@ -1846,6 +2090,191 @@
 					const ringGeo = new THREE.TubeGeometry(ringCurve, 20, 0.015, 8, false);
 					slideGroup.add(new THREE.Mesh(ringGeo, daylightMat));
 				}
+			}
+			if (seg.type === 'space_bowl') {
+				const bowlD = parseFloat(seg.bowlDiameter) || 8.0;
+				const rotations = parseFloat(seg.rotations) || 2.0;
+				const slope = seg.slope !== undefined ? seg.slope : 0.055;
+				const isLeft = (seg.dir === 'left');
+				const isClosed = (seg.bowlStyle === 'closed');
+				
+				const R_tube = (seg.diameter || 2.0) / 2;
+				const R_start = seg.computedRStart || ((bowlD / 2) - R_tube * 1.25);
+				
+				const center = seg.computedCenter || new THREE.Vector3();
+				const startAngle = seg.computedStartAngle || 0;
+				const spiralDrop = seg.computedSpiralDrop || 0;
+				
+				const bowlHeight = Math.max(2.0, spiralDrop); 
+				const points = [];
+				const floorSegs = 30;
+				
+				const R_hole = 0.0; 
+				
+				for (let i = 0; i <= floorSegs; i++) {
+					const f = i / floorSegs;
+					const r = f * (bowlD / 2);
+					const h = Math.pow(f, 2) * bowlHeight;
+					points.push(new THREE.Vector2(r, h));
+				}
+				
+				if (isClosed) {
+					const roofSegs = 15;
+					for (let i = 1; i <= roofSegs; i++) {
+						const f = i / roofSegs;
+						const r = (bowlD/2) * (1 - f);
+						const h = bowlHeight + Math.sin(f * Math.PI / 2) * 1.2;
+						points.push(new THREE.Vector2(r, h));
+					}
+				} else {
+					points.push(new THREE.Vector2(bowlD/2 + 0.08, bowlHeight));
+					for (let i = floorSegs; i >= 0; i--) {
+						const f = i / floorSegs;
+						const r = f * (bowlD/2) + 0.08;
+						const h = Math.pow(f, 2) * bowlHeight - 0.06;
+						points.push(new THREE.Vector2(r, h));
+					}
+					points.push(new THREE.Vector2(0, -0.06));
+				}
+				
+				const bowlGeo = new THREE.LatheGeometry(points, 128);
+				
+				// --- Kivágási logika ---
+				const positionAttr = bowlGeo.attributes.position;
+				const indexAttr = bowlGeo.index;
+				const newIndices = [];
+
+				// JAVÍTOTT: Dinamikus elforgatás a bemeneti szöghöz képest -22.5 fokkal eltolva
+				const rotAngle = startAngle - Math.PI / 8;
+				function rotateY(v, angle) {
+					const cos = Math.cos(angle);
+					const sin = Math.sin(angle);
+					return new THREE.Vector3(
+						v.x * cos + v.z * sin,
+						v.y,
+						-v.x * sin + v.z * cos
+					);
+				}
+
+				// Analitikus bemeneti henger felépítése
+				const T_ent = seg.computedStartTangent || new THREE.Vector3(0, 0, -1);
+				const P_ent = (seg.computedStartPos || new THREE.Vector3()).clone().sub(center);
+				
+				const ent_B = P_ent.clone().add(T_ent.clone().multiplyScalar(0.02)); 
+				const ent_A = P_ent.clone().sub(T_ent.clone().multiplyScalar(4.0)); 
+
+				const rCut = R_tube * 1.15; 
+
+				function distToSegment(v, a, b) {
+					const ab = new THREE.Vector3().subVectors(b, a);
+					const av = new THREE.Vector3().subVectors(v, a);
+					let u = av.dot(ab) / ab.lengthSq();
+					u = Math.max(0, Math.min(1, u));
+					const c = a.clone().add(ab.multiplyScalar(u));
+					return v.distanceTo(c);
+				}
+
+				// JAVÍTOTT: Dinamikus kivezető cső ív mintavételezés a tökéletes, átmérőhöz igazodó vágáshoz
+				const nextSegPoints = [];
+				const nextSegProps = [];
+				const nextStartDist = currentDist + segLen;
+				const nextSeg = PARAMS.segments[segIdx + 1];
+				if (nextSeg) {
+					const nextSegLen = (nextSeg.type === 'straight') ? (nextSeg.len || 0.1) : 
+					                   ((parseFloat(nextSeg.radius) || 0.1) * (Math.abs(parseFloat(nextSeg.angle)) * Math.PI / 180));
+					const numSamples = 30; 
+					for (let s = 0; s <= numSamples; s++) {
+						const sampleDist = nextStartDist + (s / numSamples) * nextSegLen;
+						const pt = mainPath.getPointAt(Math.max(0, Math.min(1, sampleDist / totalLen)));
+						nextSegPoints.push(pt);
+						
+						const props = getSlideProps(sampleDist);
+						nextSegProps.push((props.diameter / 2) * 1.03); // 3% biztonsági ráhagyás a tiszta élekért
+					}
+				}
+
+				for (let i = 0; i < indexAttr.count; i += 3) {
+					const idx0 = indexAttr.getX(i);
+					const idx1 = indexAttr.getY(i);
+					const idx2 = indexAttr.getZ(i);
+
+					const v0 = new THREE.Vector3(positionAttr.getX(idx0), positionAttr.getY(idx0), positionAttr.getZ(idx0));
+					const v1 = new THREE.Vector3(positionAttr.getX(idx1), positionAttr.getY(idx1), positionAttr.getZ(idx1));
+					const v2 = new THREE.Vector3(positionAttr.getX(idx2), positionAttr.getY(idx2), positionAttr.getZ(idx2));
+
+					const v0_rot = rotateY(v0, rotAngle);
+					const v1_rot = rotateY(v1, rotAngle);
+					const v2_rot = rotateY(v2, rotAngle);
+
+					const canCut0 = Math.sqrt(v0_rot.x * v0_rot.x + v0_rot.z * v0_rot.z) > (R_start - 0.2);
+					const canCut1 = Math.sqrt(v1_rot.x * v1_rot.x + v1_rot.z * v1_rot.z) > (R_start - 0.2);
+					const canCut2 = Math.sqrt(v2_rot.x * v2_rot.x + v2_rot.z * v2_rot.z) > (R_start - 0.2);
+
+					const rCut0 = rCut * (1.0 + Math.max(0, Math.sqrt(v0_rot.x*v0_rot.x + v0_rot.z*v0_rot.z) - R_start) * 0.35);
+					const rCut1 = rCut * (1.0 + Math.max(0, Math.sqrt(v1_rot.x*v1_rot.x + v1_rot.z*v1_rot.z) - R_start) * 0.35);
+					const rCut2 = rCut * (1.0 + Math.max(0, Math.sqrt(v2_rot.x*v2_rot.x + v2_rot.z*v2_rot.z) - R_start) * 0.35);
+
+					const inEnt = (canCut0 && distToSegment(v0_rot, ent_A, ent_B) < rCut0) || 
+					              (canCut1 && distToSegment(v1_rot, ent_A, ent_B) < rCut1) || 
+					              (canCut2 && distToSegment(v2_rot, ent_A, ent_B) < rCut2);
+
+					// JAVÍTOTT: Dinamikus kivezető csővágás az elfolyó ág 3D-s íve alapján
+					let inCenterHole = false;
+					if (nextSegPoints.length > 0) {
+						const v0_world = v0_rot.clone().add(center);
+						const v1_world = v1_rot.clone().add(center);
+						const v2_world = v2_rot.clone().add(center);
+						
+						let v0_in = false, v1_in = false, v2_in = false;
+						for (let s = 0; s < nextSegPoints.length; s++) {
+							const limit = nextSegProps[s];
+							if (!v0_in && v0_world.distanceTo(nextSegPoints[s]) < limit) v0_in = true;
+							if (!v1_in && v1_world.distanceTo(nextSegPoints[s]) < limit) v1_in = true;
+							if (!v2_in && v2_world.distanceTo(nextSegPoints[s]) < limit) v2_in = true;
+						}
+						inCenterHole = v0_in || v1_in || v2_in;
+					}
+
+					if (!inEnt && !inCenterHole) {
+						newIndices.push(idx0, idx1, idx2);
+					}
+				}
+
+				bowlGeo.setIndex(newIndices);
+				bowlGeo.computeVertexNormals();
+				
+				let bowlMat;
+				const extColor = seg.color || '#ffcc00';
+				
+				if (isClosed && seg.customTextureBase64) {
+					const tex = new THREE.TextureLoader().load(seg.customTextureBase64);
+					tex.wrapS = tex.wrapT = THREE.RepeatWrapping;
+					tex.repeat.set(8, 4);
+					bowlMat = new THREE.MeshBasicMaterial({ map: tex, side: THREE.DoubleSide });
+					bowlMat.userData = { alwaysGlow: seg.alwaysGlow };
+					customTextureMaterials.push(bowlMat);
+				} else {
+					bowlMat = new THREE.MeshPhongMaterial({ color: extColor, side: THREE.DoubleSide, shininess: 40 });
+				}
+				
+				const bowlMesh = new THREE.Mesh(bowlGeo, bowlMat);
+				bowlMesh.position.copy(center);
+				bowlMesh.rotation.y = startAngle - Math.PI / 8; // A tálat is dinamikus bemeneti szögbe forgatjuk
+				bowlMesh.castShadow = true; bowlMesh.receiveShadow = true;
+				slideGroup.add(bowlMesh);
+
+				// Kivezető cső lerövidítve 0.1 méterre a zuhanásmentes csatlakozáshoz
+				const dropLen = 0.1; 
+				const exitTubeGeo = new THREE.CylinderGeometry(R_tube, R_tube, dropLen, 32, 1, true);
+				const exitMat = new THREE.MeshPhongMaterial({ 
+					color: seg.color || '#ffcc00', 
+					side: THREE.DoubleSide, 
+					shininess: 40 
+				});
+				const exitMesh = new THREE.Mesh(exitTubeGeo, exitMat);
+				exitMesh.position.set(center.x, center.y - dropLen / 2, center.z);
+				exitMesh.castShadow = true; exitMesh.receiveShadow = true;
+				slideGroup.add(exitMesh);
 			}
 			currentDist = segEnd;
 		});
@@ -2439,7 +2868,11 @@
 
             
             const worldUp = new THREE.Vector3(0, 1, 0);
-            const side = new THREE.Vector3().crossVectors(tangent, worldUp).normalize();
+            let side = new THREE.Vector3().crossVectors(tangent, worldUp).normalize();
+            if (side.lengthSq() < 0.0001) {
+                const altUp = new THREE.Vector3(0, 0, 1);
+                side = new THREE.Vector3().crossVectors(tangent, altUp).normalize();
+            }
             const up = new THREE.Vector3().crossVectors(side, tangent).normalize();
 
             
