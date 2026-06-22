@@ -51,6 +51,8 @@
                 <input type="number" id="fixedHour" min="0" max="23" value="12" style="width:45%;" onchange="rebuildSlide()"> :
                 <input type="number" id="fixedMinute" min="0" max="59" value="0" style="width:45%;" onchange="rebuildSlide()">
             </div>
+			<label style="margin-top: 10px; color: #ff7700;">Kiválasztott pálya (Többpályás esetén)</label>
+            <input type="number" id="selectedLane" min="1" max="6" value="1" onchange="rebuildSlide()">
         </div>
 	<div class="param-group" style="border-top: 1px solid #444; padding-top: 10px; margin-top: 10px;">
     		<label>Statisztika:</label>
@@ -104,9 +106,10 @@
     
 	let PARAMS = {
 		segments: [
-			{ type: 'turn', radius: 5, angle: 90, dir: 'left', light: 'rings', diameter: 2.0, slope: 0.06, shape: 'circle', color: '#ffcc00', innerColor: '#000000' },
-			{ type: 'turn', radius: 5, angle: 90, dir: 'right', light: 'stars2', diameter: 2.0, slope: 0.06, shape: 'circle', color: '#ffcc00', innerColor: '#000000' },
-			{ type: 'straight', len: 4, light: 'led_displays', diameter: 2.0, slope: 0.06, shape: 'circle', color: '#ffcc00', innerColor: '#000000' }
+			{ type: 'straight', len: 6, light: 'strips', diameter: 2.0, slope: 0.06, shape: 'circle', color: '#ff7700', innerColor: '#000000' },
+			{ type: 'turn', radius: 5, angle: 90, dir: 'left', light: 'rings', diameter: 2.0, slope: 0.06, shape: 'circle', color: '#ff7700', innerColor: '#000000' },
+			{ type: 'straight', len: 5, light: 'dark', diameter: 2.0, slope: 0.06, shape: 'open', color: '#ff7700', innerColor: '#000000' },
+			{ type: 'turn', radius: 6, angle: 120, dir: 'right', light: 'daylight_dots', diameter: 2.0, slope: 0.06, shape: 'circle', color: '#ff7700', innerColor: '#000000', lanes: 3 }
 		]
 	};
 	
@@ -182,7 +185,23 @@
         const faintR = Math.floor(r * 0.25);
         const faintG = Math.floor(g * 0.25);
         faintOrangeMat.color.setHex((faintR << 16) | (faintG << 8) | b);
-
+		
+		if (typeof ambientLight !== 'undefined' && typeof sunLight !== 'undefined') {
+            ambientLight.intensity = Math.max(0.05, intensity * 0.4);
+            sunLight.intensity = Math.max(0.0, intensity * 1.5);
+            
+            // A nap útja az égen: 6:00-kor kel (0 fok), 18:00-kor nyugszik (180 fok)
+            let sunAngle = ((currentHour - 6) / 12) * Math.PI; 
+            
+            // X tengelyen kel-nyugszik, Y a magassága, Z-ből kicsit megdöntjük
+            let sunY = Math.sin(sunAngle) * 200;
+            let sunX = Math.cos(sunAngle) * 200;
+            let sunZ = 100;
+            
+            // Hogy éjszaka ne forduljon át fejjel lefelé furcsán a fény, megállítjuk a horizont alatt
+            sunLight.position.set(sunX, Math.max(sunY, -20), sunZ);
+        }
+		
         // A nyitott csúszda fényereje követi a külvilágot (éjszaka kap egy minimális 5%-os derengést, hogy ne tűnjön el teljesen a sötétben)
         const openBright = Math.max(0.05, intensity);
         openSlideMatOut.color.setRGB(openBright, openBright, openBright);
@@ -227,8 +246,13 @@
 		PARAMS.segments = [];
 		const globalD = 1.4;
 		const globalS = 0.10;
+		document.getElementById('slideDiameter').value = globalD;
+		document.getElementById('globalSlope').value = globalS;
 
-		let currentLength = 0;
+		// 1. Az első elem MINDIG egyenes, hogy a csúszda lejöjjön a toronyról és ne menjen bele
+		PARAMS.segments.push({ type: "straight", len: 8, light: getRandomLight("straight"), diameter: globalD, slope: globalS, shape: 'circle', color: '#ffcc00' });
+
+		let currentLength = 8;
 		let currentYaw = -Math.PI / 2;
 		const targetLength = 100;
 
@@ -252,9 +276,14 @@
 	window.randomStarGateGenerator = function() {
 		PARAMS.segments = [];
 		const globalD = 2.0;
-		const globalS = 0.055;
+		const globalS = 0.08; // <-- 8% meredekség a gumisnak!
+		document.getElementById('slideDiameter').value = globalD;
+		document.getElementById('globalSlope').value = globalS;
 
-		let currentLength = 0;
+		// 1. Az első elem itt is egy hosszú egyenes
+		PARAMS.segments.push({ type: "straight", len: 12, light: getRandomLight("straight"), diameter: globalD, slope: globalS, shape: 'circle', color: '#ff7700' });
+
+		let currentLength = 12;
 		while (currentLength < 60) {
 			let radius = 5;
 			let angle = 45 + Math.random() * 90;
@@ -265,6 +294,7 @@
 		renderUI();
 		rebuildSlide();
 	}
+	
 	function playComplexRumble() {
 		if (audioCtx.state === 'suspended') audioCtx.resume();
 		const duration = 4.5;
@@ -321,7 +351,7 @@
 	
 	function getSlideProps(dist) {
         if (!PARAMS.segments || PARAMS.segments.length === 0) 
-            return { diameter: 2, slope: 0.05, shape1: 'circle', shape2: 'circle', t: 0, color: '#ffcc00', prevInner: '#000000', currInner: '#000000', prevInt: 0, currInt: 0, isOpen: false };
+            return { diameter: 2, slope: 0.05, shape1: 'circle', shape2: 'circle', lanes1: 1, lanes2: 1, t: 0, color: '#ffcc00', prevInner: '#000000', currInner: '#000000', prevInt: 0, currInt: 0, isOpen: false };
         
         let cur = 0;
         for (let i = 0; i < PARAMS.segments.length; i++) {
@@ -332,18 +362,28 @@
                 let prev = i > 0 ? PARAMS.segments[i-1] : seg;
                 let t = slen <= 0 ? 0 : Math.max(0, Math.min(1, (dist - cur) / slen));
                 
+                // --- ÚJ: Megvizsgáljuk, hogy ez egy "Többpályás <-> Egypályás" találkozás-e ---
+                let isMultiTrans = (prev.shape === 'multi' && seg.shape !== 'multi') || (prev.shape !== 'multi' && seg.shape === 'multi');
+                
+                // Ha többpályásra/ról váltunk, azonnal "100%"-ra ugrik az átmenet, azaz nincs lágy morfolódás.
+                let finalT = isMultiTrans ? 1 : t;
+                let shape1 = isMultiTrans ? seg.shape : (prev.shape || 'circle');
+                let lanes1 = isMultiTrans ? seg.lanes : (prev.lanes || 1);
+
                 return {
-                    diameter: (prev.diameter || 2.0) * (1 - t) + (seg.diameter || 2.0) * t,
-                    slope: (prev.slope || 0.06) * (1 - t) + (seg.slope || 0.06) * t,
-                    shape1: prev.shape || 'circle',
+                    diameter: (prev.diameter || 2.0) * (1 - finalT) + (seg.diameter || 2.0) * finalT,
+                    slope: (prev.slope || 0.06) * (1 - finalT) + (seg.slope || 0.06) * finalT,
+                    shape1: shape1,
                     shape2: seg.shape || 'circle',
-                    t: t,
+                    lanes1: lanes1,
+                    lanes2: seg.lanes || 1,
+                    t: finalT,
                     color: seg.color || '#ffcc00',
                     prevInner: prev.innerColor || '#000000',
                     currInner: seg.innerColor || '#000000',
                     prevInt: getLightIntensity(prev.light),
                     currInt: getLightIntensity(seg.light),
-                    isOpen: seg.shape === 'open'
+                    isOpen: seg.shape === 'open' || seg.shape === 'multi'
                 };
             }
             cur += slen;
@@ -351,60 +391,62 @@
         
         const last = PARAMS.segments[PARAMS.segments.length - 1];
         return { 
-            diameter: last.diameter, slope: last.slope, shape1: last.shape, shape2: last.shape, t: 1, 
-            color: last.color, 
+            diameter: last.diameter, slope: last.slope, shape1: last.shape, shape2: last.shape, 
+            lanes1: last.lanes || 1, lanes2: last.lanes || 1,
+            t: 1, color: last.color, 
             prevInner: last.innerColor || '#000000', currInner: last.innerColor || '#000000',
             prevInt: getLightIntensity(last.light), currInt: getLightIntensity(last.light),
-            isOpen: last.shape === 'open' 
+            isOpen: last.shape === 'open' || last.shape === 'multi'
         };
     }
 
-	function getShapeXY(shape, r, angle) {
+	function getShapeXY(shape, r, angle, lanes = 1) {
 		let x = Math.cos(angle) * r;
 		let y = Math.sin(angle) * r;
 
 		if (shape === 'oval') {
-        
-        const height = r * 2;
-        const width = height / 0.666;
-        
-        
-        x = Math.cos(angle) * (width / 2);
-        y = Math.sin(angle) * (height / 2);
-
-        
-        const flatZone = 0.3; 
-
-        if (x > -flatZone && x < flatZone) {
-            
-            if (y > 0) {
-                y = height / 2; 
-            } else {
-                y = -height / 2; 
-            }
-        }
-        
-        
-    }  else if (shape === 'half') {
-			
-			
-			
+			const height = r * 2;
+			const width = height / 0.666;
+			x = Math.cos(angle) * (width / 2);
+			y = Math.sin(angle) * (height / 2);
+			const flatZone = 0.3; 
+			if (x > -flatZone && x < flatZone) {
+				if (y > 0) y = height / 2; 
+				else y = -height / 2; 
+			}
+		} else if (shape === 'half') {
 			let R = r * 2; 
-			
 			x = Math.cos(angle) * R;
 			y = Math.sin(angle) * R;
-
-			
-			
-			
-			
 			if (y < 0) y = 0; 
 			y -= r; 
+		} else if (shape === 'multi') {
+			// U: 0 (bal szél) -> 1 (jobb szél)
+			let u = (x + r) / (2 * r);
+			u = Math.max(0, Math.min(1, u)); 
+			
+			let laneU = (u * lanes) % 1; 
+			let localX = (laneU - 0.5) * 2; 
+
+			let baseFlatY = -r * 0.7; // A csúszda alap mélysége
+			
+			// Külső falak azonosítása (bal szélső sáv bal fele, jobb szélső sáv jobb fele)
+			let isLeftWall = (u <= 0.5 / lanes) && localX < 0; 
+			let isRightWall = (u >= 1.0 - (0.5 / lanes)) && localX > 0;
+			
+			// A külső falak kicsit magasabbak, mint a belső elválasztók
+			let targetHeight = (isLeftWall || isRightWall) ? (r * 0.85) : (r * 0.65);
+			
+			let wallFactor = Math.pow(Math.abs(localX), 8); 
+			let dip = (1 - Math.pow(Math.abs(localX), 2)) * (r * 0.06);
+
+			// A végső magasság egyből alkalmazva a teljes formára
+			y = baseFlatY + (wallFactor * targetHeight) - dip;
 		}
 		return { x, y };
 	}
 
-	function getPointOnSlide(dist, localAngle, offsetFromWall = 0.01) {
+	function getPointOnSlide(dist, localAngle, offsetFromWall = 0.01, segIdxHint = -1) {
 		if (!mainPath) return new THREE.Vector3();
 		const clampedDist = Math.max(0, Math.min(totalLen, dist));
 		const t = clampedDist / totalLen;
@@ -415,16 +457,15 @@
 		const B = new THREE.Vector3().crossVectors(T, worldUp).normalize();
 		const N = new THREE.Vector3().crossVectors(B, T).normalize();
 
-        let props = getSlideProps(clampedDist);
+        // Itt átadjuk a tippet, hogy pontosan vágja el a határokat
+        let props = getSlideProps(clampedDist, segIdxHint);
 		const r = (props.diameter / 2) - offsetFromWall;
-        
-        let p1 = getShapeXY(props.shape1, r, localAngle);
-        let p2 = getShapeXY(props.shape2, r, localAngle);
+
+		let p1 = getShapeXY(props.shape1, r, localAngle, props.lanes1);
+        let p2 = getShapeXY(props.shape2, r, localAngle, props.lanes2);
         
         let ox = p1.x * (1 - props.t) + p2.x * props.t;
         let oy = p1.y * (1 - props.t) + p2.y * props.t;
-		
-		
 
 		return pos.clone().add(B.clone().multiplyScalar(ox)).add(N.clone().multiplyScalar(oy));
 	}
@@ -546,11 +587,29 @@
 	scene.background = new THREE.Color(0x000000);
 	const worldUp = new THREE.Vector3(0, 1, 0); 
     const camera = new THREE.PerspectiveCamera(75, window.innerWidth / window.innerHeight, 0.1, 1000);
-	scene.add(new THREE.AmbientLight(0xffffff, 0.2));
+	const ambientLight = new THREE.AmbientLight(0xffffff, 0.2);
+	scene.add(ambientLight);
+	
+	// --- ÚJ: A Nap, ami árnyékot vet ---
+	const sunLight = new THREE.DirectionalLight(0xffffff, 1.0);
+	sunLight.castShadow = true;
+	sunLight.shadow.mapSize.width = 2048; // Nagy felbontású árnyék
+	sunLight.shadow.mapSize.height = 2048;
+	sunLight.shadow.camera.near = 0.5;
+	sunLight.shadow.camera.far = 500;
+	// Az árnyék kamerájának mérete (hogy a teljes csúszda beleférjen)
+	sunLight.shadow.camera.left = -150;
+	sunLight.shadow.camera.right = 150;
+	sunLight.shadow.camera.top = 150;
+	sunLight.shadow.camera.bottom = -150;
+	sunLight.shadow.bias = -0.001; // Árnyék-hibák (csíkozódás) megelőzése
+	scene.add(sunLight);
     
     
     const renderer = new THREE.WebGLRenderer({ antialias: true });
     renderer.localClippingEnabled = true; 
+    renderer.shadowMap.enabled = true; // <-- ÚJ SOR
+    renderer.shadowMap.type = THREE.PCFSoftShadowMap; // <-- ÚJ SOR
     renderer.setSize(window.innerWidth, window.innerHeight);
     document.body.appendChild(renderer.domElement);
 	
@@ -573,7 +632,8 @@
 				innerColor: lastSeg.innerColor || '#000000',
 				light: lastSeg.light || 'rings',
 				customTextureBase64: lastSeg.customTextureBase64 || null,
-				alwaysGlow: lastSeg.alwaysGlow !== undefined ? lastSeg.alwaysGlow : false
+				alwaysGlow: lastSeg.alwaysGlow !== undefined ? lastSeg.alwaysGlow : false,
+				lanes: lastSeg.lanes !== undefined ? lastSeg.lanes : 3
 			});
 		} else {
 			// Ha teljesen üres a lista, az alapértelmezett értékekkel indulunk
@@ -590,7 +650,8 @@
 				innerColor: '#000000',
 				light: 'rings',
 				customTextureBase64: null,
-				alwaysGlow: false
+				alwaysGlow: false,
+				lanes: 3
 			});
 		}
 		renderUI();
@@ -616,6 +677,16 @@
 	function renderUI() {
 		const container = document.getElementById('segments-container');
 		container.innerHTML = '';
+		
+		// --- ÚJ: Üres állapot kezelése ---
+		if (!PARAMS.segments || PARAMS.segments.length === 0) {
+			container.innerHTML = `<div style="text-align: center; padding: 25px 10px; color: #888; font-style: italic; background: #1a1a1a; border-radius: 5px; margin-bottom: 10px; border: 1px dashed #444;">
+				A csúszda jelenleg üres.<br><br>
+				<span style="color:#0088ff;">Kattints a <b>+ Új szakasz hozzáadása</b> gombra az építés megkezdéséhez!</span>
+			</div>`;
+			return; // Ne próbáljunk meg listázni semmit
+		}
+		
 		PARAMS.segments.forEach((seg, i) => {
 			const div = document.createElement('div');
 			div.className = 'segment-card';
@@ -633,7 +704,15 @@
 					<option value="open" ${seg.shape === 'open' ? 'selected' : ''}>Nyitott (3/4, fény nélkül)</option>
 					<option value="oval" ${seg.shape === 'oval' ? 'selected' : ''}>Ovális / Szem</option>
 					<option value="half" ${seg.shape === 'half' ? 'selected' : ''}>Félkör (Lapos alj)</option>
+					<option value="multi" ${seg.shape === 'multi' ? 'selected' : ''}>Többpályás (Nyitott)</option>
 				</select>
+
+                ${seg.shape === 'multi' ? `
+					<div style="margin-top:5px; margin-bottom: 5px; background:#222; padding:5px; border-radius:4px; border:1px solid #555;">
+						<label style="color:#0088ff;">Pályák száma (2-6)</label>
+						<input type="number" min="2" max="6" value="${seg.lanes || 3}" onchange="updateSeg(${i}, 'lanes', parseInt(this.value))">
+					</div>
+				` : ''}
 
                 <div style="display:flex; gap:5px;">
                     <div style="flex:1;">
@@ -653,9 +732,6 @@
                         <input type="color" value="${seg.innerColor || '#000000'}" onchange="updateSeg(${i}, 'innerColor', this.value)">
                     </div>
                 </div>
-
-                <label>Szín</label>
-                <input type="color" value="${seg.color || '#ffcc00'}" onchange="updateSeg(${i}, 'color', this.value)">
 
 				<label>Világítás típusa</label>
 				<select onchange="updateSeg(${i}, 'light', this.value)">
@@ -677,7 +753,6 @@
 					<option value="daylight_half_rings" ${seg.light === 'daylight_half_rings' ? 'selected' : ''}>Daylight: Fél fénygyűrűk</option>
 					<option value="daylight_stars" ${seg.light === 'daylight_stars' ? 'selected' : ''}>Daylight: Nagy csillagok</option>
 					<option value="daylight_dots" ${seg.light === 'daylight_dots' ? 'selected' : ''}>Daylight: Nagy pöttyök</option>
-					<option value="dark" ${seg.light === 'dark' ? 'selected' : ''}>Sötét</option>
 					<option value="custom_texture" ${seg.light === 'custom_texture' ? 'selected' : ''}>Egyéni textúra</option>
 				</select>
 				
@@ -711,6 +786,10 @@
 
 	window.updateSeg = function(i, prop, val) {
         PARAMS.segments[i][prop] = val;
+        
+        if (prop === 'shape' && val === 'multi' && !PARAMS.segments[i].lanes) {
+            PARAMS.segments[i].lanes = 3;
+        }
         
         if (prop === 'type' && val === 'turn') { 
             PARAMS.segments[i].radius = 4; 
@@ -768,7 +847,7 @@
 				const alpha = -Math.PI + s * Math.PI; // -PI-től 0-ig (alsó ív)
 
 				// Csúszda végének PONTOS koordinátái (alkalmazkodik a kör/félkör/ovális formához)
-				const coord = getShapeXY(shapeType, R, alpha);
+				const coord = getShapeXY(shapeType, R, alpha, lastProps.lanes2);
 				const x_circ = coord.x;
 				const y_circ = coord.y;
 
@@ -867,6 +946,7 @@
 			new THREE.PlaneGeometry(800, 800),
 			new THREE.MeshPhongMaterial({ map: groundTex, shininess: 5 })
 		);
+		groundMesh.receiveShadow = true;
 		groundMesh.rotation.x = -Math.PI / 2;
 		groundMesh.position.set(endPos.x, groundY - thickness, endPos.z);
 		slideGroup.add(groundMesh);
@@ -880,17 +960,35 @@
 		const towerPos = startPos.clone().add(towerOffset);
 
 		const towerGeo = new THREE.BoxGeometry(towerSize, towerHeight, towerSize);
-		const towerMat = new THREE.MeshPhongMaterial({ color: 0x444444, wireframe: true });
+		
+		// ÚJ: A 'wireframe: true' paraméter törölve lett, így a fal szilárd lesz (betonszürke)
+		const towerMat = new THREE.MeshPhongMaterial({ color: 0x666666, shininess: 10 });
 		const towerMesh = new THREE.Mesh(towerGeo, towerMat);
 		
 		towerMesh.position.set(towerPos.x, groundY + (towerHeight / 2), towerPos.z);
+		towerMesh.castShadow = true; towerMesh.receiveShadow = true;
 		slideGroup.add(towerMesh);
+		
+		transitionMesh.castShadow = true; transitionMesh.receiveShadow = true;
+		bottomBox.castShadow = true; bottomBox.receiveShadow = true;
+		leftBox.castShadow = true; leftBox.receiveShadow = true;
+		rightBox.castShadow = true; rightBox.receiveShadow = true;
+		backWall.castShadow = true; backWall.receiveShadow = true;
 	}
 	
 	window.rebuildSlide = function() {
+        if(PARAMS.segments && PARAMS.segments.length > 0) window.SLIDE_RAD = PARAMS.segments[0].diameter / 2; 
+
 		scene.remove(slideGroup);
 		slideGroup = new THREE.Group();
-		
+		scene.add(slideGroup); // Egyből be is tesszük a kamerába (még ha üres is)
+
+		// --- ÚJ: Biztonsági megállás, ha kitöröltek minden elemet ---
+		if (!PARAMS.segments || PARAMS.segments.length === 0) {
+			document.getElementById('lengthVal').innerText = "0.00";
+			document.getElementById('heightVal').innerText = "0.00";
+			return;
+		}
         
         allRings = []; starPoints.length = 0; whiteDots.length = 0; floorLights.length = 0; 
         centerTriangles.length = 0; allDisplays = []; imageDisplays = []; turnLeds.length = 0; 
@@ -1025,8 +1123,7 @@
 			const segLen = (seg.type === 'straight') ? (seg.len || 0.1) : ((parseFloat(seg.radius) || 0.1) * (Math.abs(parseFloat(seg.angle)) * Math.PI / 180));
 			const segEnd = currentDist + segLen;
 
-			const radSegs = 40;
-			// A felbontást a szakasz hosszához igazítjuk
+			const radSegs = 120;
 			const steps = Math.max(10, Math.floor(segLen * 15));
 
 			const vertsOut = [], vertsIn = [], indicesOut = [], indicesIn = [], colorsOut = [], colorsIn = [], uvsIn = [];
@@ -1036,9 +1133,10 @@
 			for (let i = 0; i <= steps; i++) {
 				const t_seg = i / steps;
 				const dist = currentDist + t_seg * segLen;
-				const props = getSlideProps(dist);
+                
+                // Kényszerített szakasz-azonosító
+				const props = getSlideProps(dist, segIdx);
 
-				// Sima belső szín és intenzitás átmenetek számítása
 				const colPrev = new THREE.Color(props.prevInner);
 				const colCurr = new THREE.Color(props.currInner);
 				const tempInColor = colPrev.clone().lerp(colCurr, props.t);
@@ -1047,33 +1145,36 @@
 
 				for (let j = 0; j <= radSegs; j++) {
 					const a = (j / radSegs) * Math.PI * 2;
-					// U: Textúra szélessége -> pontosan 1x van kinyújtva a teljes szakasz hosszában
 					const u = t_seg;
-					// V: Textúra magassága -> körbeöleli a kerületet pontosan egyszer (0-tól 1-ig)
 					const v = j / radSegs;
 					uvsIn.push(u, v);
-					const vOut = getPointOnSlide(dist, a, 0);
+					
+                    // A segIdx paraméter garantálja, hogy nincs fals összekötés (fal) a csövek között
+					const vOut = getPointOnSlide(dist, a, 0, segIdx);
 					vertsOut.push(vOut.x, vOut.y, vOut.z);
 					colorsOut.push(cColor.r, cColor.g, cColor.b);
 
-					const vIn = getPointOnSlide(dist, a, 0.015);
+					const vIn = getPointOnSlide(dist, a, 0.015, segIdx);
 					vertsIn.push(vIn.x, vIn.y, vIn.z);
 
-					if (props.isOpen) {
-						colorsIn.push(cColor.r, cColor.g, cColor.b); 
-					} else {
-						colorsIn.push(tempInColor.r, tempInColor.g, tempInColor.b); 
-					}
+					if (props.isOpen) colorsIn.push(cColor.r, cColor.g, cColor.b); 
+					else colorsIn.push(tempInColor.r, tempInColor.g, tempInColor.b); 
 				}
 			}
 
 			for (let i = 0; i < steps; i++) {
 				const dist = currentDist + (i + 0.5) / steps * segLen;
-				const props = getSlideProps(dist);
+				const props = getSlideProps(dist, segIdx);
+                
+                let isMulti = props.shape1 === 'multi' || props.shape2 === 'multi';
 
 				for (let j = 0; j < radSegs; j++) {
 					const a = (j / radSegs) * Math.PI * 2;
-					if (props.isOpen && a > Math.PI/4 && a < 3*Math.PI/4) continue;
+					
+					// Többpályásnál csak az alsó tálcát rendereljük, nincs hatalmas oldalfala
+					if (isMulti && a > 0.01 && a < Math.PI - 0.01) continue;
+					// Sima nyitott félcső logikája
+					else if (props.isOpen && !isMulti && a > Math.PI/4 && a < 3*Math.PI/4) continue;
 
 					const row1 = i * (radSegs + 1);
 					const row2 = (i + 1) * (radSegs + 1);
@@ -1081,7 +1182,6 @@
 
 					indicesOut.push(a_idx, b_idx, c_idx);
 					indicesOut.push(b_idx, d_idx, c_idx);
-
 					indicesIn.push(a_idx, c_idx, b_idx);
 					indicesIn.push(b_idx, c_idx, d_idx);
 				}
@@ -1100,10 +1200,8 @@
 			geoIn.setIndex(indicesIn); 
 			geoIn.computeVertexNormals();
 
-			// Külső anyag (mindig az eredeti színeket használja)
 			const segmentMatOut = seg.shape === 'open' ? openSlideMatOut : new THREE.MeshPhongMaterial({ vertexColors: true, side: THREE.FrontSide, shininess: 40 });
 
-			// Belső anyag (ha van textúra, azt használja, ha nincs, marad az eredeti belső szín)
 			let segmentMatIn;
 			if (seg.shape === 'open') {
 				segmentMatIn = openSlideMatIn;
@@ -1111,24 +1209,20 @@
 				const tex = new THREE.TextureLoader().load(seg.customTextureBase64);
 				tex.wrapS = THREE.RepeatWrapping;
 				tex.wrapT = THREE.RepeatWrapping;
-				tex.colorSpace = THREE.SRGBColorSpace; // <-- Ez garantálja, hogy a kép nem lesz túlexponált/fakó
-				
-				// A MeshBasicMaterial nem reagál a külső fényekre, csak tisztán a textúrát mutatja.
-				// Az 1.0-ás (0xffffff) szín esetén pont olyan, mint a képnézegetőben.
-				segmentMatIn = new THREE.MeshBasicMaterial({ 
-					map: tex, 
-					color: 0xffffff, 
-					side: THREE.FrontSide
-				});
+				tex.colorSpace = THREE.SRGBColorSpace; 
+				segmentMatIn = new THREE.MeshBasicMaterial({ map: tex, color: 0xffffff, side: THREE.FrontSide });
 				segmentMatIn.userData = { alwaysGlow: seg.alwaysGlow };
 				customTextureMaterials.push(segmentMatIn);
 			} else {
 				segmentMatIn = new THREE.MeshPhongMaterial({ vertexColors: true, side: THREE.FrontSide, shininess: 10 });
 			}
 
-			// Itt adjuk hozzá ténylegesen a csövet a jelenethez!
-			slideGroup.add(new THREE.Mesh(geoOut, segmentMatOut), new THREE.Mesh(geoIn, segmentMatIn));
+			const meshOut = new THREE.Mesh(geoOut, segmentMatOut);
+			const meshIn = new THREE.Mesh(geoIn, segmentMatIn);
+			meshOut.castShadow = true; meshOut.receiveShadow = true;
+			meshIn.castShadow = true; meshIn.receiveShadow = true;
 
+			slideGroup.add(meshOut, meshIn);
 			currentDist = segEnd;
 		});
 	}
@@ -1230,7 +1324,7 @@
             
             window.SLIDE_RAD = (seg.diameter || 2.0) / 2;
 
-            if (seg.shape === 'open') {
+            if (seg.shape === 'open' || seg.shape === 'multi') {
                 currentDist = segEnd;
                 return;
             }
@@ -2350,11 +2444,23 @@
 
             
             const heightFromCenter = -window.SLIDE_RAD + 0.75;
+            let propsNow = getSlideProps(t * totalLen);
+            let curLanes = (propsNow.shape2 === 'multi') ? (propsNow.lanes2 || 1) : 1; 
+            let selectedLaneEl = document.getElementById('selectedLane');
+            let selLane = selectedLaneEl ? Math.min(Math.max(1, parseInt(selectedLaneEl.value) || 1), curLanes) : 1;
             
-            const cameraPos = pos.clone().add(up.clone().multiplyScalar(heightFromCenter));
+            let laneOffset = 0;
+            if (curLanes > 1) {
+                let u = ((selLane - 1) + 0.5) / curLanes; // A sáv közepe (0-1)
+                laneOffset = (u - 0.5) * window.SLIDE_RAD * 2;
+            }
+
+            // A side vektor felhasználása a balra/jobbra tolásához
+            const cameraPos = pos.clone()
+                .add(up.clone().multiplyScalar(heightFromCenter))
+                .add(side.clone().multiplyScalar(laneOffset));
+                
             camera.position.copy(cameraPos);
-            
-            
             
             const lookAheadDist = 2.0; 
             const lookAheadT = Math.min(t + (lookAheadDist / totalLen), 1.0);
@@ -2362,11 +2468,24 @@
             const targetPos = mainPath.getPointAt(lookAheadT);
             const targetTangent = mainPath.getTangentAt(lookAheadT).normalize();
             
-            
             const targetSide = new THREE.Vector3().crossVectors(targetTangent, worldUp).normalize();
             const targetUp = new THREE.Vector3().crossVectors(targetSide, targetTangent).normalize();
             
-            const lookAtPos = targetPos.add(targetUp.clone().multiplyScalar(heightFromCenter));
+            // --- ÚJ: Sávválasztás offset a célpont (lookAt) számára ---
+            let propsTarget = getSlideProps(lookAheadT * totalLen);
+            let targetLanes = (propsTarget.shape2 === 'multi') ? (propsTarget.lanes2 || 1) : 1;
+            let selLaneTarget = selectedLaneEl ? Math.min(Math.max(1, parseInt(selectedLaneEl.value) || 1), targetLanes) : 1;
+            
+            let laneOffsetTarget = 0;
+            if (targetLanes > 1) {
+                let uT = ((selLaneTarget - 1) + 0.5) / targetLanes;
+                laneOffsetTarget = (uT - 0.5) * window.SLIDE_RAD * 2;
+            }
+
+            const lookAtPos = targetPos
+                .add(targetUp.clone().multiplyScalar(heightFromCenter))
+                .add(targetSide.clone().multiplyScalar(laneOffsetTarget));
+                
             camera.lookAt(lookAtPos);
             
             
@@ -2665,7 +2784,6 @@
         camera.updateProjectionMatrix();
         renderer.setSize(window.innerWidth, window.innerHeight);
     });
-	randomStarGateGenerator()
 </script>
 </body>
 </html>
