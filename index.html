@@ -796,13 +796,12 @@
 					<option value="dots" ${seg.light === 'dots' ? 'selected' : ''}>Fehér pöttyök</option>
 					<option value="floor_run" ${seg.light === 'floor_run' ? 'selected' : ''}>Padlófény (Futó)</option>
 					<option value="jumpscare" ${seg.light === 'jumpscare' ? 'selected' : ''}>Fénysorompó + Hang</option>
-					${seg.type === 'straight' ? `<option value="strips" ${seg.light === 'strips' ? 'selected' : ''}>Hosszanti LED csíkok</option>` : ''}
+					<option value="strips" ${seg.light === 'strips' ? 'selected' : ''}>Hosszanti LED csíkok</option>
 					${seg.type === 'straight' ? `<option value="center_tris" ${seg.light === 'center_tris' ? 'selected' : ''}>Középső 3D Háromszögek</option>` : ''}
 					${seg.type === 'straight' ? `<option value="water_curtain" ${seg.light === 'water_curtain' ? 'selected' : ''}>Vízfüggöny vetítéssel</option>` : ''}
 					<option value="turn_circles" ${seg.light === 'turn_circles' ? 'selected' : ''}>Kanyar: Körök</option>
 					<option value="turn_droplets" ${seg.light === 'turn_droplets' ? 'selected' : ''}>Kanyar: Vízcseppek</option>
 					<option value="zigzag" ${seg.light === 'zigzag' ? 'selected' : ''}>Tető: Cikkcakk vonal</option>
-					<option value="dark" ${seg.light === 'dark' ? 'selected' : ''}>Sötét</option>
 					<option value="led_displays" ${seg.light === 'led_displays' ? 'selected' : ''}>Kerek LED kijelzők</option>
 					<option value="daylight_rings" ${seg.light === 'daylight_rings' ? 'selected' : ''}>Daylight: Fénygyűrűk</option>
 					<option value="daylight_half_rings" ${seg.light === 'daylight_half_rings' ? 'selected' : ''}>Daylight: Fél fénygyűrűk</option>
@@ -810,6 +809,8 @@
 					<option value="daylight_dots" ${seg.light === 'daylight_dots' ? 'selected' : ''}>Daylight: Nagy pöttyök</option>
 					<option value="daylight_top_dots" ${seg.light === 'daylight_top_dots' ? 'selected' : ''}>Daylight: Mennyezeti pöttyök (15 cm)</option>
 					<option value="custom_texture" ${seg.light === 'custom_texture' ? 'selected' : ''}>Egyéni textúra</option>
+					${seg.type === 'straight' ? `<option value="text" ${seg.light === 'text' ? 'selected' : ''}>Világító felirat (szöveg)</option>` : ''}
+					<option value="dark" ${seg.light === 'dark' ? 'selected' : ''}>Sötét</option>
 				</select>
 				
 				${seg.light === 'led_displays' ? `
@@ -828,7 +829,42 @@
 							<option value="front_r_back_l" ${seg.ledLayout === 'front_r_back_l' ? 'selected' : ''}>Egy elöl jobb, egy hátul bal (eredeti átmérő)</option>
 							<option value="back_r_front_l" ${seg.ledLayout === 'back_r_front_l' ? 'selected' : ''}>Egy hátul jobb, egy elöl bal (eredeti átmérő)</option>
 							<option value="ceiling_double" ${seg.ledLayout === 'ceiling_double' ? 'selected' : ''}>Egy a mennyezeten (kétszeres átmérő)</option>
+							<option value="scattered_upper" ${seg.ledLayout === 'scattered_upper' ? 'selected' : ''}>Felső félén szabályos mintában szétszórva</option>
 						</select>
+						${seg.ledLayout === 'scattered_upper' ? `
+							<div style="margin-top: 5px; border-top: 1px solid #444; padding-top: 5px;">
+								<label>Kijelző átmérő (m)</label>
+								<input type="number" step="0.05" value="${seg.ledSize !== undefined ? seg.ledSize : 0.3}" onchange="updateSeg(${i}, 'ledSize', parseFloat(this.value))">
+								<label>Hosszanti távolság (m)</label>
+								<input type="number" step="0.1" value="${seg.ledSpacingLong !== undefined ? seg.ledSpacingLong : 1.0}" onchange="updateSeg(${i}, 'ledSpacingLong', parseFloat(this.value))">
+								<label>Sávok száma (mennyezet ívén)</label>
+								<input type="number" step="1" min="1" value="${seg.ledSpacingAng !== undefined ? seg.ledSpacingAng : 3}" onchange="updateSeg(${i}, 'ledSpacingAng', parseInt(this.value))">
+								<label>LED színe</label>
+								<select onchange="updateSeg(${i}, 'ledColor', this.value)">
+									<option value="#ff0000" ${seg.ledColor === '#ff0000' || !seg.ledColor ? 'selected' : ''}>Vörös</option>
+									<option value="#00ff00" ${seg.ledColor === '#00ff00' ? 'selected' : ''}>Zöld</option>
+									<option value="#0000ff" ${seg.ledColor === '#0000ff' ? 'selected' : ''}>Kék</option>
+									<option value="#ffff00" ${seg.ledColor === '#ffff00' ? 'selected' : ''}>Sárga</option>
+									<option value="mixed" ${seg.ledColor === 'mixed' ? 'selected' : ''}>Vegyes színek</option>
+								</select>
+							</div>
+						` : ''}
+					</div>
+				` : ''}
+				
+				${seg.light === 'text' && seg.type === 'straight' ? `
+					<div style="background:#222; padding:8px; margin-top:5px; border:1px solid #555; border-radius:4px;">
+						<label style="color:#0088ff; font-weight:bold;">Felirat Beállítások</label>
+						<label>Felirat szövege</label>
+						<input type="text" value="${seg.textValue !== undefined ? seg.textValue : 'BLACK HOLE'}" onchange="updateSeg(${i}, 'textValue', this.value); rebuildSlide();">
+					</div>
+				` : ''}
+				
+				${seg.light === 'stars2' ? `
+					<div style="background:#222; padding:8px; margin-top:5px; border:1px solid #555; border-radius:4px;">
+						<label style="color:#0088ff; font-weight:bold;">Csillagos ég v2 Beállítások</label>
+						<label>Lépték / Méretarány (méret és sűrűség)</label>
+						<input type="number" step="0.1" min="0.1" max="5.0" value="${seg.starsScale !== undefined ? seg.starsScale : 1.0}" onchange="updateSeg(${i}, 'starsScale', parseFloat(this.value))">
 					</div>
 				` : ''}
 				
@@ -1516,7 +1552,6 @@
 				for (let d = currentDist + 0.5; d < segEnd; d += OCTANT_LEN / 17) { placeRing(d); }
 			} 
 			else if (seg.light === 'stars') {
-				
 				const cellLength = 0.2; 
 				const angleSpan = Math.PI; 
 				
@@ -1526,32 +1561,20 @@
 
 				for (let d = currentDist; d < segEnd; d += cellLength) {
 					for (let i = 0; i < starsPerRing; i++) {
-						
 						const dOffset = (Math.random() - 0.5) * cellLength * jitterAmount;
 						const aOffset = (Math.random() - 0.5) * angleStep * jitterAmount;
 
 						const finalD = Math.max(currentDist, Math.min(segEnd, d + dOffset));
-						
-						
-						const baseAngle = i * angleStep; 
-						const finalAng = baseAngle + aOffset;
+						const finalAng = i * angleStep + aOffset;
 
-						
-						const centerPos = mainPath.getPointAt(finalD / totalLen);
-						const finalPos = getPointOnSlide(finalD, finalAng, 0.022);
-
-						
-						const square = new THREE.Mesh(squareGeoPre, orangeMat);
-						square.position.copy(finalPos); 
-						square.lookAt(centerPos);
-						square.rotateZ(Math.random() * Math.PI);
+						// 3D ívre hajlított narancssárga háttér négyzet
+						const bentSquareGeo = bendGeometryToSlide(squareGeoPre, finalD, finalAng, 0.022);
+						const square = new THREE.Mesh(bentSquareGeo, orangeMat);
 						slideGroup.add(square);
 
-						
-						const redDot = new THREE.Mesh(dotGeoPre, redMatDot);
-						
-						redDot.position.copy(getPointOnSlide(finalD, finalAng, 0.025));
-						redDot.lookAt(centerPos); 
+						// 3D ívre hajlított belső piros LED pötty
+						const bentDotGeo = bendGeometryToSlide(dotGeoPre, finalD, finalAng, 0.025);
+						const redDot = new THREE.Mesh(bentDotGeo, redMatDot);
 						redDot.userData = { rnd: Math.random() * 25 };
 						starPoints.push(redDot); 
 						slideGroup.add(redDot);
@@ -1625,52 +1648,79 @@
 				}
 			}
 			else if (seg.light === 'stars2') {
+				const scale = seg.starsScale !== undefined ? seg.starsScale : 1.0;
+				
+				const S = 0.22 * scale; 
+				const distStep = S * Math.sqrt(3) / 2; 
+				
+				const scaledOuterGeo = starGeoOuterPre.clone().scale(scale, scale, 1);
+				const scaledInnerGeo = starGeoInnerPre.clone().scale(scale, scale, 1);
+				
+				const props = getSlideProps(currentDist);
+				const R = props.diameter / 2;
+				const angStep = S / R; 
+				
+				const angStart = 0.08;
+				const angEnd = Math.PI - 0.08;
+
 				let rowCount = 0;
-				for (let d = currentDist; d < segEnd; d += 0.15) {
+				for (let d = currentDist + distStep / 2; d < segEnd; d += distStep) {
+					const staggerOffset = (rowCount % 2 === 0) ? 0 : (angStep * 0.5);
 					
-					for (let a = 0.2; a <= Math.PI - 0.2; a += Math.PI / 8) {
-						const ang = a + ((rowCount % 2 === 0) ? 0 : 0.1); 
+					for (let a = angStart + staggerOffset; a <= angEnd; a += angStep) {
+						const ang = a;
 						
-						const offBG = getPointOnSlide(d, ang, 0.020);
-						
-						const offStar = getPointOnSlide(d, ang, 0.025);
-						
-						const bgStar = new THREE.Mesh(starGeoOuterPre, orangeMat);
-						bgStar.position.copy(offBG); bgStar.lookAt(mainPath.getPointAt(d/totalLen));
+						// 3D ívre hajlított külső narancs csillag keret
+						const bentOuterGeo = bendGeometryToSlide(scaledOuterGeo, d, ang, 0.020);
+						const bgStar = new THREE.Mesh(bentOuterGeo, orangeMat);
 						slideGroup.add(bgStar);
 
-						const innerStar = new THREE.Mesh(starGeoInnerPre, new THREE.MeshBasicMaterial({ color: 0xffffff, side: THREE.DoubleSide }));
-						innerStar.position.copy(offStar); innerStar.lookAt(mainPath.getPointAt(d/totalLen));
+						// 3D ívre hajlított belső világító színes csillag
+						const bentInnerGeo = bendGeometryToSlide(scaledInnerGeo, d, ang, 0.025);
+						const innerStar = new THREE.Mesh(bentInnerGeo, new THREE.MeshBasicMaterial({ color: 0xffffff, side: THREE.DoubleSide }));
 						innerStar.userData = { phase: Math.random() * 10, posIndex: rowCount };
-						star2Points.push(innerStar); slideGroup.add(innerStar);
+						star2Points.push(innerStar); 
+						slideGroup.add(innerStar);
 					}
 					rowCount++;
 				}
 			}
 			else if (seg.light === 'strips') {
-				for (let d = currentDist + 0.6; d < segEnd; d += 0.6) {
-					const t = d / totalLen;
-					const pos = mainPath.getPointAt(t);
-					const T = mainPath.getTangentAt(t).normalize();
+				// 1. FOLYTONOS KÁBELCSATORNÁK (Narancs csövek generálása a szakasz teljes hosszában)
+				for (let i = 0; i < 14; i++) {
+					const points = [];
+					const steps = Math.ceil(segLen * 15); // 15 mintavétel méterenként a tökéletes ívhez
+					const ang = (i / 14) * Math.PI * 2;
+
+					for (let s = 0; s <= steps; s++) {
+						const d = currentDist + (s / steps) * segLen;
+						points.push(getPointOnSlide(d, ang, 0.020));
+					}
+					
+					const curve = new THREE.CatmullRomCurve3(points);
+					const tubeGeo = new THREE.TubeGeometry(curve, steps * 2, 0.012, 6, false);
+					const tubeMesh = new THREE.Mesh(tubeGeo, orangeBaseMat);
+					tubeMesh.castShadow = true;
+					slideGroup.add(tubeMesh);
+				}
+
+				// 2. DISZKRÉT LED PONTOK (Fényforrások elhelyezése a folytonos csatornákon)
+				for (let d = currentDist + 0.15; d < segEnd; d += 0.3) {
 					for (let i = 0; i < 14; i++) {
 						const ang = (i / 14) * Math.PI * 2;
-						
-						
-						const posBG = getPointOnSlide(d, ang, 0.020);  
-						const posLED = getPointOnSlide(d, ang, 0.025); 
+						const posLED = getPointOnSlide(d, ang, 0.024);
 
-						const bgStrip = new THREE.Mesh(new THREE.PlaneGeometry(0.03, 0.4), orangeMat);
-						bgStrip.position.copy(posBG); 
-						bgStrip.up.copy(T); 
-						bgStrip.lookAt(pos); 
-						slideGroup.add(bgStrip);
+						const led = new THREE.Mesh(ledGeo, new THREE.MeshBasicMaterial({ color: 0xffffff }));
+						led.position.copy(posLED);
 						
-						const led = new THREE.Mesh(new THREE.PlaneGeometry(0.015, 0.36), new THREE.MeshBasicMaterial({ color: 0xffffff, side: THREE.DoubleSide }));
-						led.position.copy(posLED); 
-						led.up.copy(T); 
-						led.lookAt(pos);
+						// Mentjük az animációhoz szükséges helyi és globális adatokat
+						led.userData = { 
+							lineIdx: i, 
+							distIdx: d,
+							localD: d - currentDist,
+							totalSegmentLen: segLen
+						};
 						
-						led.userData = { lineIdx: i, distIdx: d }; 
 						stripLeds.push(led); 
 						slideGroup.add(led);
 					}
@@ -1708,34 +1758,43 @@
 				const angleStep = Math.PI / 6; 
 				const totalTurnRad = (seg.angle * Math.PI) / 180;
 				const angleBuffer = 0.4 / seg.radius;
+				
+				// 1.5-szeresére megnövelt alap 2D vízcsepp alakzat (Shape)
+				const dropletShape = new THREE.Shape();
+				dropletShape.moveTo(0, 0.30); // 0.20 helyett 0.30-as magasság
+				dropletShape.bezierCurveTo(0.15, 0.15, 0.15, -0.15, 0, -0.15); // 0.10 helyett 0.15-ös szélesség
+				dropletShape.bezierCurveTo(-0.15, -0.15, -0.15, 0.15, 0, 0.30);
+				const dropletGeoBase = new THREE.ShapeGeometry(dropletShape);
+
 				for (let a = angleStep; a <= totalTurnRad - angleBuffer; a += angleStep) {
 					const d = currentDist + (a * seg.radius);
-					
 					const sides = [Math.PI / 4, 3 * Math.PI / 4];
 					
 					sides.forEach(sideCenterAngle => {
 						if (isDrop) {
-							
-							for (let rScale = 0.1; rScale <= 0.3; rScale += 0.05) {
-								const ringPoints = [];
-								for (let i = 0; i <= 20; i++) {
-									const theta = (i / 20) * Math.PI * 2;
-									let lx = Math.cos(theta) * rScale;
-									let ly = Math.sin(theta) * rScale;
-									
-									if (ly > 0) lx *= (1 - ly/0.6); 
-									ringPoints.push(getPointOnSlide(d + lx, sideCenterAngle + (ly / window.SLIDE_RAD), 0.01));
-								}
-								const curve = new THREE.CatmullRomCurve3(ringPoints);
-								slideGroup.add(new THREE.Mesh(new THREE.TubeGeometry(curve, 20, 0.02, 6, true), orangeBaseMat));
-							}
-							
-							const l = new THREE.Mesh(new THREE.SphereGeometry(0.025, 8, 8), whiteMat);
-							l.position.copy(getPointOnSlide(d, sideCenterAngle, 0.025));
-							turnLeds.push(l); slideGroup.add(l);
+							const isLeft = (sideCenterAngle === 3 * Math.PI / 4);
+							const flipSign = isLeft ? -1 : 1;
 
+							const targetGeo = isLeft ? dropletGeoBase.clone().scale(-1, 1, 1) : dropletGeoBase;
+
+							// 1. NAGYOBB SZILÁRD NARANCS VÍZCSEPP
+							const bentDropletGeo = bendGeometryToSlide(targetGeo, d, sideCenterAngle, 0.020);
+							const dropletMesh = new THREE.Mesh(bentDropletGeo, orangeMat);
+							dropletMesh.castShadow = true;
+							slideGroup.add(dropletMesh);
+
+							// 2. BELEÁGYAZOTT FEHÉR LED PONTOK (Skálázott és tükrözött elrendezésben)
+							const ledYPositions = [-0.07 * flipSign, 0.04 * flipSign, 0.16 * flipSign];
+							ledYPositions.forEach(localLy => {
+								const ledPos = getPointOnSlide(d, sideCenterAngle + (localLy / window.SLIDE_RAD), 0.025);
+								const led = new THREE.Mesh(new THREE.SphereGeometry(0.015, 8, 8), whiteMat);
+								led.position.copy(ledPos);
+								
+								turnLeds.push(led); 
+								slideGroup.add(led);
+							});
 						} else {
-							
+							// Klasszikus kanyari körök
 							const ringPoints = [];
 							const radius = 0.375;
 							for (let i = 0; i <= 32; i++) {
@@ -1759,51 +1818,125 @@
 				}
 			}
 			else if (seg.light === 'zigzag') {
-				const orangePoints = [];
-				const whitePoints = [];
-				const step = 0.1;
+				// 1. LAPOS 2D CIKKCAKK SZALAG (Szalag szélessége: 8 cm, pontosan rásimul a cső belső héjára)
+				const step = 0.04; // Sűrű mintavételezés a tökéletesen sima kanyarokért
+				const ribbonWidth = 0.08; 
+				const halfWidthAng = (ribbonWidth / 2) / window.SLIDE_RAD;
+
+				const verts = [];
+				const indices = [];
+				let vertIdx = 0;
+
 				for (let d = currentDist; d <= segEnd; d += step) {
-					const waveAngle = (Math.PI / 2) + Math.sin(d * 6) * 0.22; 
-					orangePoints.push(getPointOnSlide(d, waveAngle, 0.020));
-					whitePoints.push(getPointOnSlide(d, waveAngle, 0.025));
+					// Szinuszos cikkcakk hullám középvonala
+					const centerAngle = (Math.PI / 2) + Math.sin(d * 6) * 0.22;
+					const leftAng = centerAngle - halfWidthAng;
+					const rightAng = centerAngle + halfWidthAng;
+
+					// Pontok kiszámítása pontosan a cső falának belső ívén (0.020 m mélységben)
+					const pL = getPointOnSlide(d, leftAng, 0.020);
+					const pR = getPointOnSlide(d, rightAng, 0.020);
+
+					verts.push(pL.x, pL.y, pL.z);
+					verts.push(pR.x, pR.y, pR.z);
+
+					if (d > currentDist) {
+						// Négyszög képzése két háromszögből
+						const a = vertIdx - 2;
+						const b = vertIdx - 1;
+						const c = vertIdx;
+						const d_idx = vertIdx + 1;
+
+						indices.push(a, b, c);
+						indices.push(b, d_idx, c);
+					}
+					vertIdx += 2;
 				}
-				
-				if (orangePoints.length > 1) {
-					const orangeCurve = new THREE.CatmullRomCurve3(orangePoints);
-					const whiteCurve = new THREE.CatmullRomCurve3(whitePoints);
-					slideGroup.add(new THREE.Mesh(new THREE.TubeGeometry(orangeCurve, orangePoints.length * 2, 0.04, 8, false), orangeBaseMat));
+
+				const ribbonGeo = new THREE.BufferGeometry();
+				ribbonGeo.setAttribute('position', new THREE.Float32BufferAttribute(verts, 3));
+				ribbonGeo.setIndex(indices);
+				ribbonGeo.computeVertexNormals();
+
+				const ribbonMesh = new THREE.Mesh(ribbonGeo, orangeBaseMat);
+				ribbonMesh.castShadow = true;
+				slideGroup.add(ribbonMesh);
+
+				// 2. BEÁGYAZOTT FEHÉR LED PONTOK (A cikkcakk középvonalán futó pontok)
+				for (let d = currentDist + 0.1; d < segEnd; d += 0.2) {
+					const centerAngle = (Math.PI / 2) + Math.sin(d * 6) * 0.22;
+					// 5 mm-rel a szalag fölé emelve a tökéletes láthatóságért (Z-fighting ellen)
+					const ledPos = getPointOnSlide(d, centerAngle, 0.025); 
+
+					const led = new THREE.Mesh(new THREE.SphereGeometry(0.015, 8, 8), whiteMat);
+					led.position.copy(ledPos);
 					
-					slideGroup.add(new THREE.Mesh(new THREE.TubeGeometry(whiteCurve, whitePoints.length * 2, 0.015, 8, false), new THREE.MeshBasicMaterial({ color: 0xffffff })));
+					zigzagLeds.push(led); 
+					slideGroup.add(led);
 				}
 			}
 			else if (seg.light === 'text' && seg.type === 'straight') {
-				const canvas = document.createElement('canvas');
-				canvas.width = 1024; canvas.height = 256;
-				const ctx = canvas.getContext('2d');
-				ctx.fillStyle = '#ff7700'; ctx.fillRect(0, 0, 1024, 256);
-				ctx.fillStyle = 'white'; ctx.font = 'bold 120px Arial';
-				ctx.textAlign = 'center'; ctx.textBaseline = 'middle';
-				ctx.fillText('BLACK HOLE', 512, 128);
+				const textVal = seg.textValue || 'BLACK HOLE';
 				
-				const tex = new THREE.CanvasTexture(canvas);
-				const arcSpan = 0.8; 
+				// 1. KÜLSŐ TEXTÚRA (Függőlegesen tükrözve, hogy kívülről szabályosan álljon)
+				const canvasOut = document.createElement('canvas');
+				canvasOut.width = 1024; canvasOut.height = 256;
+				const ctxOut = canvasOut.getContext('2d');
+				ctxOut.clearRect(0, 0, 1024, 256);
+				ctxOut.save();
+				ctxOut.translate(0, 256);
+				ctxOut.scale(1, -1); // Vertikális tükrözés
+				ctxOut.fillStyle = '#ff7700';
+				ctxOut.font = 'bold 110px Arial';
+				ctxOut.textAlign = 'center'; ctxOut.textBaseline = 'middle';
+				ctxOut.fillText(textVal, 512, 128);
+				ctxOut.restore();
 				
-				const textGeo = new THREE.CylinderGeometry(window.SLIDE_RAD - 0.02, window.SLIDE_RAD - 0.02, seg.len * 0.7, 32, 1, true, -arcSpan/2, arcSpan);
-				const textMat = new THREE.MeshBasicMaterial({ map: tex, side: THREE.DoubleSide, transparent: true });
-				const textMesh = new THREE.Mesh(textGeo, textMat);
+				const texOut = new THREE.CanvasTexture(canvasOut);
+				texOut.colorSpace = THREE.SRGBColorSpace;
 				
-				const t = (currentDist + segLen / 2) / totalLen;
-				const fIdx = Math.min(Math.floor(t * (frames.normals.length - 1)), frames.normals.length - 1);
-				textMesh.position.copy(mainPath.getPointAt(t));
-				textMesh.quaternion.setFromUnitVectors(new THREE.Vector3(0, 1, 0), frames.tangents[fIdx]);
-				textMesh.rotateX(Math.PI / 2); 
-				textMesh.rotateY(Math.PI); 
-				slideGroup.add(textMesh);
+				// 2. BELSŐ TEXTÚRA (A külsővel megegyező állású és irányú a belső olvashatóságért)
+				const canvasIn = document.createElement('canvas');
+				canvasIn.width = 1024; canvasIn.height = 256;
+				const ctxIn = canvasIn.getContext('2d');
+				ctxIn.clearRect(0, 0, 1024, 256);
+				ctxIn.save();
+				ctxIn.translate(0, 256);
+				ctxIn.scale(1, -1); // Vertikális tükrözés (megegyezik a külsővel)
+				ctxIn.fillStyle = '#ff7700';
+				ctxIn.font = 'bold 110px Arial';
+				ctxIn.textAlign = 'center'; ctxIn.textBaseline = 'middle';
+				ctxIn.fillText(textVal, 512, 128);
+				ctxIn.restore();
+				
+				const texIn = new THREE.CanvasTexture(canvasIn);
+				texIn.colorSpace = THREE.SRGBColorSpace;
+
+				const R = window.SLIDE_RAD;
+				
+				// Sík geometria (szélesség = csúszda hossza, magasság = cső ívhossza)
+				const textGeoBase = new THREE.PlaneGeometry(seg.len * 0.7, R * 1.0, 32, 16);
+				const dCenter = currentDist + segLen / 2;
+
+				const textMatOut = new THREE.MeshBasicMaterial({ map: texOut, transparent: true, side: THREE.DoubleSide });
+				const textMatIn = new THREE.MeshBasicMaterial({ map: texIn, transparent: true, side: THREE.DoubleSide });
+
+				// 45 fokos szög a jobb oldal (0 radián) és a mennyezet (Math.PI/2 radián) között
+				const targetAngle = Math.PI / 4;
+
+				// Külső felirat: 1.5 cm-rel a cső külső fala felett (-0.015 m offset)
+				const bentGeoOut = bendGeometryToSlide(textGeoBase, dCenter, targetAngle, -0.015);
+				const meshOut = new THREE.Mesh(bentGeoOut, textMatOut);
+
+				// Belső felirat: 1.5 cm-rel a cső belső fala alatt (0.015 m offset)
+				const bentGeoIn = bendGeometryToSlide(textGeoBase, dCenter, targetAngle, 0.015);
+				const meshIn = new THREE.Mesh(bentGeoIn, textMatIn);
+
+				slideGroup.add(meshOut, meshIn);
 			}
 			else if (seg.light === 'led_displays') {
-				const createLEDDisplayAt = (d, baseAngle, id, customRadius = 0.335) => {
+				const createLEDDisplayAt = (d, baseAngle, id, customRadius = 0.335, finalColor = '#ff0000') => {
 					const bgRadius = customRadius * (0.35 / 0.335);
-					// Háttér offset: 0.022 (közelebb a cső falához)
 					const bgGeo = bendGeometryToSlide(new THREE.CircleGeometry(bgRadius, 32), d, baseAngle, 0.022);
 					const bgMesh = new THREE.Mesh(bgGeo, faintOrangeMat);
 					slideGroup.add(bgMesh);
@@ -1815,7 +1948,6 @@
 					const mat = new THREE.MeshBasicMaterial({ map: texture, transparent: true, side: THREE.DoubleSide });
 					
 					const displayGeo = new THREE.CircleGeometry(customRadius, 32);
-					// LED felület offset: 0.032 (beljebb a cső belseje felé)
 					const geo = bendGeometryToSlide(displayGeo, d, baseAngle, 0.032);
 					const mesh = new THREE.Mesh(geo, mat);
 					
@@ -1826,7 +1958,8 @@
 					
 					mesh.userData = { 
 						canvas: canvas, ctx: ctx, texture: texture, 
-						patternType: pType, offset: d + id 
+						patternType: pType, offset: d + id,
+						color: finalColor
 					};
 					
 					imageDisplays.push(mesh);
@@ -1834,6 +1967,8 @@
 				};
 
 				const layout = seg.ledLayout || 'classic';
+				const colorOpt = seg.ledColor || '#ff0000';
+
 				if (layout === 'classic') {
 					if (seg.type === 'turn') {
 						const sectors = Math.max(1, Math.round(seg.angle / 30));
@@ -1844,43 +1979,90 @@
 							const t_turn = (i + 0.5) / totalDisplays;
 							const d = currentDist + t_turn * segLen;
 							const baseAngle = (i % 2 === 0) ? (Math.PI / 4) : (3 * Math.PI / 4);
-							createLEDDisplayAt(d, baseAngle, i);
+							createLEDDisplayAt(d, baseAngle, i, 0.335, colorOpt);
 						}
 					} 
 					else if (seg.type === 'straight') {
 						if (segLen <= 2.0) {
 							const d1 = currentDist + 0.35;
 							const d2 = currentDist + segLen - 0.35;
-							createLEDDisplayAt(d1, Math.PI / 2, 0);
-							createLEDDisplayAt(d2, Math.PI / 2, 1);
+							createLEDDisplayAt(d1, Math.PI / 2, 0, 0.335, colorOpt);
+							createLEDDisplayAt(d2, Math.PI / 2, 1, 0.335, colorOpt);
 						} else {
 							const epsilon = 0.35; 
 							const dLeft0 = currentDist + epsilon;
 							const dLeft1 = currentDist + segLen * 0.5;
 							const dLeft2 = currentDist + segLen - epsilon;
 
-							createLEDDisplayAt(dLeft0, Math.PI / 4, 0);
-							createLEDDisplayAt(dLeft1, Math.PI / 4, 1);
-							createLEDDisplayAt(dLeft2, Math.PI / 4, 2);
+							createLEDDisplayAt(dLeft0, Math.PI / 4, 0, 0.335, colorOpt);
+							createLEDDisplayAt(dLeft1, Math.PI / 4, 1, 0.335, colorOpt);
+							createLEDDisplayAt(dLeft2, Math.PI / 4, 2, 0.335, colorOpt);
 
 							const dRight0 = (dLeft0 + dLeft1) / 2;
 							const dRight1 = (dLeft1 + dLeft2) / 2;
 
-							createLEDDisplayAt(dRight0, 3 * Math.PI / 4, 3);
-							createLEDDisplayAt(dRight1, 3 * Math.PI / 4, 4);
+							createLEDDisplayAt(dRight0, 3 * Math.PI / 4, 3, 0.335, colorOpt);
+							createLEDDisplayAt(dRight1, 3 * Math.PI / 4, 4, 0.335, colorOpt);
 						}
 					}
 				} else if (layout === 'front_r_back_l') {
-					// Elöl jobb oldalt (3 * Math.PI / 4), hátul bal oldalt (Math.PI / 4)
-					createLEDDisplayAt(currentDist + segLen * 0.25, 3 * Math.PI / 4, 0);
-					createLEDDisplayAt(currentDist + segLen * 0.75, Math.PI / 4, 1);
+					createLEDDisplayAt(currentDist + segLen * 0.25, 3 * Math.PI / 4, 0, 0.335, colorOpt);
+					createLEDDisplayAt(currentDist + segLen * 0.75, Math.PI / 4, 1, 0.335, colorOpt);
 				} else if (layout === 'back_r_front_l') {
-					// Hátul jobb oldalt (3 * Math.PI / 4), elöl bal oldalt (Math.PI / 4)
-					createLEDDisplayAt(currentDist + segLen * 0.75, 3 * Math.PI / 4, 0);
-					createLEDDisplayAt(currentDist + segLen * 0.25, Math.PI / 4, 1);
+					createLEDDisplayAt(currentDist + segLen * 0.75, 3 * Math.PI / 4, 0, 0.335, colorOpt);
+					createLEDDisplayAt(currentDist + segLen * 0.25, Math.PI / 4, 1, 0.335, colorOpt);
 				} else if (layout === 'ceiling_double') {
-					// Mennyezeten (Math.PI / 2), kétszeres átmérővel
-					createLEDDisplayAt(currentDist + segLen * 0.5, Math.PI / 2, 0, 0.335 * 2);
+					createLEDDisplayAt(currentDist + segLen * 0.5, Math.PI / 2, 0, 0.335 * 2, colorOpt);
+				} else if (layout === 'scattered_upper') {
+					// Szabályos, de enyhén randomizált eloszlás a teljes felső félkörön (egyenlítőtől egyenlítőig)
+					const sizeLong = seg.ledSpacingLong !== undefined ? seg.ledSpacingLong : 1.0;
+					const lanesCount = seg.ledSpacingAng !== undefined ? seg.ledSpacingAng : 3;
+					const customRadius = (seg.ledSize !== undefined ? seg.ledSize : 0.3) / 2;
+
+					// Egyenlítőtől egyenlítőig (0-tól PI radiánig)
+					const angStart = 0.0;
+					const angEnd = Math.PI;
+
+					let colIdx = 0;
+					for (let d = currentDist + sizeLong / 2; d < segEnd; d += sizeLong) {
+						for (let lane = 0; lane < lanesCount; lane++) {
+							// Sakktáblaszerű eltolás megtartása a szórt mintázathoz
+							if (lanesCount > 1 && (colIdx + lane) % 2 === 1) continue;
+
+							// Alap szabályos koordináta kiszámítása
+							let baseAngle;
+							if (lanesCount === 1) {
+								baseAngle = Math.PI / 2;
+							} else {
+								baseAngle = angStart + (lane / (lanesCount - 1)) * (angEnd - angStart);
+							}
+
+							// 1. Kis mértékű hosszanti véletlenszerűség (max +-15% eltolás a rácstól)
+							const dJitter = (Math.random() - 0.5) * sizeLong * 0.3;
+							const finalD = Math.max(currentDist + customRadius, Math.min(segEnd - customRadius, d + dJitter));
+
+							// 2. Kis mértékű szög szerinti véletlenszerűség
+							let angJitter = 0;
+							if (lanesCount > 1) {
+								const maxAngJitter = ((angEnd - angStart) / (lanesCount - 1)) * 0.3;
+								angJitter = (Math.random() - 0.5) * maxAngJitter;
+							} else {
+								angJitter = (Math.random() - 0.5) * 0.3;
+							}
+							
+							// Határok között tartjuk a szöget, hogy ne menjen az alsó (vizes) félbe
+							const finalAngle = Math.max(0, Math.min(Math.PI, baseAngle + angJitter));
+
+							let finalColor = colorOpt;
+							if (colorOpt === 'mixed') {
+								const colors = ['#ff0000', '#00ff00', '#0000ff', '#ffff00'];
+								finalColor = colors[(colIdx * lanesCount + lane) % colors.length];
+							}
+
+							createLEDDisplayAt(finalD, finalAngle, colIdx * lanesCount + lane, customRadius, finalColor);
+						}
+						colIdx++;
+					}
 				}
 			}
 			else if (seg.light === 'daylight_top_dots') {
@@ -2933,60 +3115,168 @@
 		
 		starPoints.forEach(s => s.visible = Math.sin(time * 6 + s.userData.rnd) > 0);
 		whiteDots.forEach(d => d.visible = Math.floor(time * 10) % 2 === 0);
+		const star2CycleDuration = 15.0;
+		const currentStar2AnimMode = Math.floor(time / star2CycleDuration) % 4;
+
 		star2Points.forEach(s => {
-			
-			const flash = Math.sin(time * 6 + s.userData.phase);
-			s.visible = flash > -0.2; 
-			
-			
-			const colorPhase = Math.floor(time / 1.5 + s.userData.posIndex * 0.2);
-			s.material.color.setHex(multiColors[colorPhase % 4]);
+			const phase = s.userData.phase;
+			const rowIdx = s.userData.posIndex;
+
+			if (currentStar2AnimMode === 0) {
+				// CSILLÁMLÓ SZIVÁRVÁNY (Lágy organikus pislákolás 4 váltakozó színben)
+				const flash = Math.sin(time * 6.0 + phase);
+				s.visible = flash > -0.2;
+				const colorPhase = Math.floor(time / 1.5 + rowIdx * 0.2);
+				s.material.color.setHex(multiColors[colorPhase % 4]);
+			} 
+			else if (currentStar2AnimMode === 1) {
+				// KOZMIKUS HULLÁM (Soronként továbbfutó pislákoló kozmikus hullámok)
+				const wave = Math.sin(rowIdx * 0.8 - time * 10.0 + phase * 0.3);
+				s.visible = wave > 0.1;
+				const waveColors = [0x00ffff, 0x0088ff, 0x9900ff, 0xff00ff]; // Türkiz, kék, lila, magenta
+				const colorPhase = Math.floor(time * 2.0 + rowIdx);
+				s.material.color.setHex(waveColors[colorPhase % 4]);
+			} 
+			else if (currentStar2AnimMode === 2) {
+				// CSILLAGPOR RAGYOGÁS (Rendkívül gyors sziporkázás tiszta ezüst és arany színekkel)
+				const sparkle = Math.sin(time * 20.0 + phase * 2.0);
+				s.visible = sparkle > 0.4;
+				const isGold = (Math.sin(phase) > 0.0);
+				s.material.color.setHex(isGold ? 0xffcc00 : 0xffffff);
+			} 
+			else if (currentStar2AnimMode === 3) {
+				// SZÍN-CSOPORTOK (Az egymás melletti csillagok összehangoltan váltanak színt)
+				const clusterPhase = Math.floor(time * 3.0 + rowIdx * 0.5);
+				const clusterTwinkle = Math.sin(time * 8.0 + rowIdx * 1.5);
+				s.visible = clusterTwinkle > -0.4;
+				s.material.color.setHex(multiColors[clusterPhase % 4]);
+			}
 		});
 
-		
+		const animCycleDuration = 20.0; // 6 másodpercenként váltakozó programok
+		const currentStripAnimMode = Math.floor(time / animCycleDuration) % 4;
+
 		stripLeds.forEach(s => {
-			
-			const timeFactor = time * 3.5;
-			const distFactor = s.userData.distIdx * 1.2;
-			const lineFactor = s.userData.lineIdx * 0.5;
-		
-			
-			const wave = Math.sin(time * 2 + s.userData.distIdx * 0.5);
-			const colorPhase = Math.floor(timeFactor + distFactor + lineFactor + wave);
-		
-			s.material.color.setHex(multiColors[colorPhase % 4]);
+			const lIdx = s.userData.lineIdx;
+			const dIdx = s.userData.distIdx;
+			const localD = s.userData.localD;
+			const len = s.userData.totalSegmentLen;
+
+			let colorHex = 0xffffff;
+
+			if (currentStripAnimMode === 0) {
+				// 1. FUTÓFÉNY HULLÁM (Tüzes narancs-sárga futás lefelé)
+				const wave = Math.sin(dIdx * 3.5 - time * 12.0);
+				if (wave > 0.4) {
+					colorHex = 0xffdd00; // Fényes sárga mag
+				} else if (wave > -0.1) {
+					colorHex = 0xff3300; // Parázs vörös gallér
+				} else {
+					colorHex = 0x220000; // Minimális háttér derengés
+				}
+			} 
+			else if (currentStripAnimMode === 1) {
+				// 2. HELIX CSAVARODÁS (Két ellentétes spirál pörög a cső palástján)
+				const spiral = Math.sin(lIdx * (Math.PI / 7) + dIdx * 2.5 - time * 9.0);
+				if (spiral > 0.6) {
+					colorHex = 0x00ffff; // Türkiz spirál ág
+				} else if (spiral < -0.6) {
+					colorHex = 0xff00ff; // Magenta spirál ág
+				} else {
+					colorHex = 0x050015; // Sötétkék éjszakai derengés
+				}
+			} 
+			else if (currentStripAnimMode === 2) {
+				// 3. SZIVÁRVÁNYÁRAMLÁS (Smooth spektrum-folyam lefelé és körbe)
+				const phase = Math.floor(time * 6.0 + dIdx * 1.5 + lIdx * 0.4);
+				colorHex = multiColors[phase % multiColors.length];
+			} 
+			else if (currentStripAnimMode === 3) {
+				// 4. STROBOSZKÓP GYŰRŰ PULZÁLÁS (Neon kék gyűrűk robbannak végig a szakaszon)
+				const pulse = Math.sin((localD / len) * Math.PI * 2.5 - time * 16.0);
+				if (pulse > 0.7) {
+					colorHex = 0xffffff; // Stroboszkóp fehér villanás
+				} else {
+					colorHex = 0x0022ff; // Neonkék alapállapot
+				}
+			}
+
+			s.material.color.setHex(colorHex);
 		});
 		updateLedAnimation(delta);
 		renderer.render(scene, camera);
+		const floorCycleDuration = 13.0;
+		const currentFloorAnimMode = Math.floor(time / floorCycleDuration) % 4;
+
 		floorLights.forEach(f => {
-			
-			
-			const phase = ((f.userData.dist - time * 6.0) % 4.0 + 4.0) % 4.0;
-			
-			
-			f.visible = phase < 1.0; 
+			const d = f.userData.dist;
+
+			if (currentFloorAnimMode === 0) {
+				// CLASSIC CHASE (Hagyományos futófény a csúszda hossza mentén)
+				const phase = ((d - time * 6.0) % 4.0 + 4.0) % 4.0;
+				f.visible = phase < 1.0;
+			} 
+			else if (currentFloorAnimMode === 1) {
+				// PADLÓ PULZÁLÁS (Az összes padlólap egyszerre lélegzik/pulzál lassan)
+				const breathe = Math.sin(time * 6.0);
+				f.visible = breathe > -0.2;
+			} 
+			else if (currentFloorAnimMode === 2) {
+				// SZALADÓ GYORS VILLANÁS (Nagyon gyorsan továbbrohanó dupla villanás)
+				const flash = Math.sin(d * 2.0 - time * 18.0);
+				f.visible = flash > 0.6;
+			} 
+			else if (currentFloorAnimMode === 3) {
+				// VÁLTAKOZÓ BLOKKOK (A padlólapok kettesével alkotott blokkjai váltakozva villognak)
+				const blockIndex = Math.floor(d / 1.6);
+				const toggle = Math.floor(time * 3.0) % 2;
+				f.visible = (blockIndex % 2 === toggle);
+			}
 		});
+		const triCycleDuration = 16.0; // 6 másodpercenként váltakozó programok
+		const currentTriAnimMode = Math.floor(time / triCycleDuration) % 4;
+
 		centerTriangles.forEach(t => {
-			
-			const wave = Math.sin(time * 8 + t.userData.index * (Math.PI / 5));
-			
-			
-			t.visible = wave > 0;
+			const idx = t.userData.index; // 0-tól 9-ig terjedő szögállás index
+
+			if (currentTriAnimMode === 0) {
+				// 1. KÖRHINTA (Csoportosan körbefutó fényhatás a cső palástján)
+				const currentActiveStart = (time * 8.0) % 10.0;
+				const diff = (idx - currentActiveStart + 10) % 10;
+				t.visible = diff < 3.0; // Egyszerre 3 egymás melletti háromszög világít
+			}
+			else if (currentTriAnimMode === 1) {
+				// 2. LÜKTETŐ NEON (Minden háromszög egyszerre lélegzik/lüktet gyors ütemben)
+				const pulse = Math.sin(time * 12.0);
+				t.visible = pulse > -0.3; // Dinamikus kitöltési tényező
+			}
+			else if (currentTriAnimMode === 2) {
+				// 3. VÁLTAKOZÓ VILLOGÁS (A páros és páratlan pozíciójúak váltakozva villannak fel)
+				const oddEven = Math.floor(time * 4.0) % 2;
+				t.visible = (idx % 2 === oddEven);
+			}
+			else if (currentTriAnimMode === 3) {
+				// 4. KÉTIRÁNYÚ ROBBANÓ HULLÁM (A mennyezetről és a padlóról induló hullámok)
+				const distFromCeiling = Math.min(Math.abs(idx - 5), 5 - Math.abs(idx - 5));
+				const wave = Math.sin(distFromCeiling * 1.5 - time * 10.0);
+				t.visible = wave > 0;
+			}
 		});
 		turnLeds.forEach((l, i) => l.visible = Math.floor(time * 10 + i) % 2 === 0);
         zigzagLeds.forEach((l, i) => l.visible = (Math.floor(time * 5 + i) % 5 === 0));
 		imageDisplays.forEach(disp => {
 			const { canvas, ctx, texture, patternType, offset } = disp.userData;
+			const displayColor = disp.userData.color || '#ff0000'; // Dinamikus szín lekérése
 			const t_fast = time * 8 + offset;
 			const t_slow = time * 2 + offset;
 			
 			ctx.clearRect(0, 0, 512, 512);
-			ctx.strokeStyle = '#ff0000';
-			ctx.fillStyle = '#ff0000';
+			ctx.strokeStyle = displayColor;
+			ctx.fillStyle = displayColor;
 			ctx.lineWidth = 12;
 			ctx.lineCap = 'round';
 			ctx.shadowBlur = 25;
-			ctx.shadowColor = '#ff0000';
+			ctx.shadowColor = displayColor;
 
 			if (patternType === 'smiley') {
 				ctx.beginPath(); ctx.arc(256, 256, 230, 0, Math.PI * 2); ctx.stroke();
@@ -3091,6 +3381,7 @@
 				setTimeout(() => { js.triggered = false; }, 5000);
 			}
 		});
+
 
 		
 		if (time < strobeEndTime) {
