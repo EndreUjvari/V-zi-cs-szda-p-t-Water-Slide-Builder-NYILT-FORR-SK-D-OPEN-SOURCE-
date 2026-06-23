@@ -752,6 +752,7 @@
 	let gunBarrelLeds = [];
 	let waterCurtains = [];
 	let customTextureMaterials = [];
+	let tunnelDisplays = [];
 	
 	const waterAlphaTex = new THREE.TextureLoader().load('https://threejs.org/examples/textures/lava/cloud.png');
 	waterAlphaTex.wrapS = waterAlphaTex.wrapT = THREE.RepeatWrapping;
@@ -1017,6 +1018,7 @@
 					<option value="daylight_stars" ${seg.light === 'daylight_stars' ? 'selected' : ''}>Daylight: Nagy csillagok</option>
 					<option value="daylight_dots" ${seg.light === 'daylight_dots' ? 'selected' : ''}>Daylight: Nagy pöttyök</option>
 					<option value="daylight_top_dots" ${seg.light === 'daylight_top_dots' ? 'selected' : ''}>Daylight: Mennyezeti pöttyök (15 cm)</option>
+					<option value="futuristic_tunnel" ${seg.light === 'futuristic_tunnel' ? 'selected' : ''}>Futurisztikus Alagút (Full LED cső)</option>
 					<option value="custom_texture" ${seg.light === 'custom_texture' ? 'selected' : ''}>Egyéni textúra</option>
 					${seg.type === 'straight' ? `<option value="text" ${seg.light === 'text' ? 'selected' : ''}>Világító felirat (szöveg)</option>` : ''}
 					<option value="dark" ${seg.light === 'dark' ? 'selected' : ''}>Sötét</option>
@@ -1323,7 +1325,7 @@
         centerTriangles.length = 0; allDisplays = []; imageDisplays = []; turnLeds.length = 0; 
         zigzagLeds.length = 0; star2Points.length = 0; stripLeds.length = 0; 
         bgPositions.length = 0; bgIndices.length = 0; bgIdxOffset = 0; jumpscares = []; waterCurtains = [];
-		customTextureMaterials = [];
+		customTextureMaterials = []; tunnelDisplays = []; 
 
 		mainPath = createSlidePath();
 		totalLen = mainPath.getLength();
@@ -1516,6 +1518,7 @@
 
 	function buildCustomTube() {
 		let currentDist = 0;
+		let lastTunnelSeed = null; // ÚJ: Állapotváltozó az egymást követő LED-szakaszok számmagjának mentéséhez
 
 		PARAMS.segments.forEach((seg, segIdx) => {
 			// Kiszámítjuk a pontos szakaszhosszat a típus alapján
@@ -1539,6 +1542,7 @@
 			// --- 1. SPACE BOWL ESETÉN ÁTUGRÁS (Nem rajzolunk csövet a tál spirálján belül) ---
 			if (seg.type === 'space_bowl') {
 				currentDist = segEnd;
+				lastTunnelSeed = null; // Reset
 				return;
 			}
 
@@ -1620,7 +1624,9 @@
 			let segmentMatIn;
 			if (seg.shape === 'open') {
 				segmentMatIn = openSlideMatIn;
+				lastTunnelSeed = null; // Megszakadt a LED folytonosság
 			} else if (seg.light === 'custom_texture' && seg.customTextureBase64) {
+				lastTunnelSeed = null; // Megszakadt a LED folytonosság
 				const tex = new THREE.TextureLoader().load(seg.customTextureBase64);
 				tex.wrapS = THREE.RepeatWrapping;
 				tex.wrapT = THREE.RepeatWrapping;
@@ -1628,7 +1634,42 @@
 				segmentMatIn = new THREE.MeshBasicMaterial({ map: tex, color: 0xffffff, side: THREE.FrontSide });
 				segmentMatIn.userData = { alwaysGlow: seg.alwaysGlow };
 				customTextureMaterials.push(segmentMatIn);
+			} else if (seg.light === 'futuristic_tunnel') {
+				// TORZULÁSMENTES DINAMIKUS FELBONTÁS
+				const pxPerMeter = 150;
+				const C = Math.PI * (seg.diameter || 2.0);
+				const canvasW = Math.max(256, Math.round(segLen * pxPerMeter));
+				const canvasH = Math.max(256, Math.round(C * pxPerMeter));
+				
+				const canvas = document.createElement('canvas');
+				canvas.width = canvasW;
+				canvas.height = canvasH;
+				
+				const ctx = canvas.getContext('2d');
+				const tex = new THREE.CanvasTexture(canvas);
+				tex.wrapS = THREE.RepeatWrapping;
+				tex.wrapT = THREE.RepeatWrapping;
+				tex.repeat.set(1, 1);
+				
+				segmentMatIn = new THREE.MeshBasicMaterial({ map: tex, color: 0xffffff, side: THREE.FrontSide });
+				
+				// Ha nincs korábbi aktív számmagunk (mert most kezdődik a láncolat), generálunk egyet
+				if (lastTunnelSeed === null) {
+					lastTunnelSeed = Math.random() * 800;
+				}
+
+				tunnelDisplays.push({
+					canvas: canvas,
+					ctx: ctx,
+					texture: tex,
+					width: canvasW,
+					height: canvasH,
+					seed: lastTunnelSeed, // Közös számmag kiosztása a szinkronizációhoz
+					diameter: seg.diameter || 2.0,
+					len: segLen
+				});
 			} else {
+				lastTunnelSeed = null; // Megszakadt a LED folytonosság
 				segmentMatIn = new THREE.MeshPhongMaterial({ vertexColors: true, side: THREE.FrontSide, shininess: 10 });
 			}
 
@@ -3659,6 +3700,424 @@
 			
 			texture.needsUpdate = true;
 		});
+		// FUTURISZTIKUS ALAGÚT (FULL LED CSŐ) 12-FÉLE LÁGY, SZINKRONIZÁLT ANIMÁCIÓJA ÚJ FORMÁKKAL ÉS SZÍNVILÁGOKKAL
+		tunnelDisplays.forEach(td => {
+			const { canvas, ctx, texture, width, height, seed, len, diameter } = td;
+			const t = time;
+			
+			// Fekete háttér tisztítása
+			ctx.clearRect(0, 0, width, height);
+			ctx.fillStyle = '#000000';
+			ctx.fillRect(0, 0, width, height);
+			
+			// Lágy neon ragyogás beállítása (nincs stroboszkóp)
+			ctx.shadowBlur = 6;
+			
+			// A Csillagos ég v2 három színvilága
+			const paletteClassic = [0xff0000, 0x00ff00, 0xffff00, 0x0000ff]; // 1. Klasszikus Szivárvány
+			const paletteSpace = [0x00ffff, 0x0088ff, 0x9900ff, 0xff00ff];   // 2. Cyber Neon
+			const paletteGoldSilver = [0xffcc00, 0xffffff, 0xffaa00, 0xdddddd]; // 3. Kozmikus Arany-Ezüst
+			
+			const getSpaceColor = (palette, timeOffset, xPos) => {
+				const colorIdx = Math.floor(timeOffset * 1.5 + xPos * 0.005 + seed * 0.1);
+				const rawHex = palette[colorIdx % palette.length];
+				return "#" + rawHex.toString(16).padStart(6, '0');
+			};
+
+			// 12-féle folyamatos, lágyan váltakozó animációs mód
+			const animMode = Math.floor((t + seed) / 5.0) % 14;
+
+			ctx.save();
+
+			if (animMode === 0) {
+				// MÓD 1: KOZMIKUS HULLÁMCSATORNA [Cyber Neon]
+				const spacing = 180;
+				const offset = (t * 80) % spacing;
+
+				for (let x = -offset; x < width + spacing; x += spacing) {
+					const color = getSpaceColor(paletteSpace, t, x);
+					ctx.shadowColor = color;
+					
+					const alpha = 0.5 + Math.sin(t * 3.0 + x * 0.01) * 0.5;
+					drawLEDRing(ctx, x, height, color, alpha);
+				}
+			} 
+			else if (animMode === 1) {
+				// MÓD 2: LÜKTETŐ SOKSZÖGEK [Kozmikus Arany-Ezüst]
+				const spacing = 200;
+				for (let x = spacing / 2; x < width; x += spacing) {
+					const color = getSpaceColor(paletteGoldSilver, t, x);
+					ctx.shadowColor = color;
+					
+					const radius = 25 + Math.sin(t * 3.0 + x * 0.02) * 10;
+					const alpha = 0.6 + Math.sin(t * 4.0 + x * 0.01) * 0.4;
+					
+					const sides = (Math.floor(x / spacing) % 2 === 0) ? 5 : 6;
+					for (let y = height / 6; y < height; y += height / 3) {
+						drawLEDPolygon(ctx, x, y, radius, sides, color, alpha);
+					}
+				}
+			} 
+			else if (animMode === 2) {
+				// MÓD 3: VÁLTAKOZÓ CSILLAGSOROK [Klasszikus Szivárvány]
+				const colSpacing = 160;
+				for (let x = colSpacing / 2; x < width; x += colSpacing) {
+					const color = getSpaceColor(paletteClassic, t, x);
+					ctx.shadowColor = color;
+
+					const colIdx = Math.floor(x / colSpacing);
+					const alpha = 0.5 + Math.sin(t * 4.0 + colIdx * Math.PI / 2) * 0.5;
+					
+					for (let y = height / 8; y < height; y += height / 4) {
+						drawLEDStar(ctx, x, y, 22, color, alpha);
+					}
+				}
+			} 
+			else if (animMode === 3) {
+				// MÓD 4: SIMA HELIX SPIRÁL [Cyber Neon]
+				const spiralSpacing = 2.4 * 150;
+				const offset = (t * 100) % spiralSpacing;
+
+				for (let x = -offset; x < width + spiralSpacing; x += spiralSpacing) {
+					const color = getSpaceColor(paletteSpace, t, x);
+					ctx.shadowColor = color;
+					
+					const ledSpacing = 16;
+					for (let y = 0; y < height; y += ledSpacing) {
+						const p = y / height;
+						const xPos = x + p * spiralSpacing;
+						const alpha = 0.4 + Math.sin(t * 2.0 + p * Math.PI) * 0.4;
+						drawLEDDot(ctx, xPos, y, 2.5, color, alpha);
+					}
+				}
+			}
+			else if (animMode === 4) {
+				// MÓD 5: TÁGULÓ NÉGYZETEK [Klasszikus Szivárvány]
+				const spacing = 220;
+				for (let x = spacing / 2; x < width; x += spacing) {
+					const color = getSpaceColor(paletteClassic, t, x);
+					ctx.shadowColor = color;
+					
+					const size = 20 + Math.sin(t * 4.0 + x * 0.02) * 12;
+					const alpha = 0.5 + Math.sin(t * 3.0 + x * 0.01) * 0.5;
+					
+					for (let y = height / 5; y < height; y += height / 2.5) {
+						drawLEDPolygon(ctx, x, y, size, 4, color, alpha);
+					}
+				}
+			}
+			else if (animMode === 5) {
+				// MÓD 6: CSILLAGPOR ÁRAMLAT [Kozmikus Arany-Ezüst]
+				for (let i = 0; i < 30; i++) {
+					const color = getSpaceColor(paletteGoldSilver, t, i * 70);
+					ctx.shadowColor = color;
+					
+					const speed = 1.0 + Math.sin(i * 3) * 0.3;
+					const px = (i * 45 + t * 180 * speed + seed) % width;
+					const py = (Math.sin(i * 12 + seed * 0.1) * 0.4 + 0.5) * height;
+					const alpha = 0.4 + Math.sin(t * 3.0 + i) * 0.4;
+					
+					drawLEDDot(ctx, px, py, 2.0, color, alpha);
+				}
+			}
+			else if (animMode === 6) {
+				// MÓD 7: LÁGY SAKKTÁBLA SHIFT [Cyber Neon]
+				const blockW = 1.6 * 150;
+				const blockH = height / 3;
+				const cycle = Math.sin(t * 2.5);
+
+				for (let x = 0; x < width; x += blockW) {
+					for (let y = 0; y < height; y += blockH) {
+						const col = Math.floor(x / blockW);
+						const row = Math.floor(y / blockH);
+						const color = getSpaceColor(paletteSpace, t, x + y);
+						ctx.shadowColor = color;
+						
+						const alpha = (col + row) % 2 === 0 ? (0.5 + cycle * 0.5) : (0.5 - cycle * 0.5);
+
+						if ((col + row) % 2 === 0) {
+							drawLEDStar(ctx, x + blockW / 2, y + blockH / 2, 20, color, alpha);
+						} else {
+							drawLEDPolygon(ctx, x + blockW / 2, y + blockH / 2, 18, 6, color, alpha);
+						}
+					}
+				}
+			}
+			else if (animMode === 7) {
+				// MÓD 8: KERINGŐ FÉNYGYŰRŰK [Klasszikus Szivárvány]
+				const ringSpacing = 1.2 * 150;
+				const offset = (t * 70) % ringSpacing;
+
+				for (let x = -offset; x < width + ringSpacing; x += ringSpacing) {
+					const color = getSpaceColor(paletteClassic, t, x);
+					ctx.shadowColor = color;
+					
+					const alpha = 0.6 + Math.sin(t * 3.5 + x * 0.02) * 0.4;
+					drawLEDRing(ctx, x, height, color, alpha);
+					drawLEDRing(ctx, x + 25, height, color, alpha * 0.7);
+				}
+			}
+			else if (animMode === 8) {
+				// MÓD 9: VORTEX GATE (Fényalagút Kapu) [A fotó alapján kidolgozott, rendkívül sűrű LED elrendezés]
+				const ringSpacing = 1.8 * 150;
+				const offset = (t * 60) % ringSpacing;
+
+				// 1. Oldalsó sűrű vízszintes legyezőcsíkok (bal és jobb oldalon) - Vörös és kék váltakozásban
+				const leftStart = Math.floor(height * 0.38);
+				const leftEnd = Math.floor(height * 0.62);
+				let lineIdx = 0;
+				for (let y = leftStart; y <= leftEnd; y += 18) {
+					const color = (lineIdx % 2 === 0) ? '#ff0033' : '#0055ff';
+					ctx.shadowColor = color;
+					drawLEDLine(ctx, y, width, color, 0.75);
+					lineIdx++;
+				}
+
+				const rightEnd1 = Math.floor(height * 0.12);
+				const rightStart2 = Math.floor(height * 0.88);
+				for (let y = 0; y <= rightEnd1; y += 18) {
+					const color = (y % 36 === 0) ? '#ff0033' : '#0055ff';
+					ctx.shadowColor = color;
+					drawLEDLine(ctx, y, width, color, 0.75);
+				}
+				for (let y = rightStart2; y <= height; y += 18) {
+					const color = (y % 36 === 0) ? '#ff0033' : '#0055ff';
+					ctx.shadowColor = color;
+					drawLEDLine(ctx, y, width, color, 0.75);
+				}
+
+				// 2. Mennyezeti félgyűrűk (zöld, sárga, kék és piros színekben)
+				const ceilingStart = Math.floor(height * 0.12);
+				const ceilingEnd = Math.floor(height * 0.38);
+				const ceilingColors = ['#00ff33', '#ffcc00', '#00e1ff', '#ff0055'];
+
+				let ringIdx = 0;
+				for (let x = -offset; x < width + ringSpacing; x += ringSpacing / 3) {
+					const color = ceilingColors[ringIdx % ceilingColors.length];
+					ctx.shadowColor = color;
+					
+					const alpha = 0.5 + Math.sin(t * 3.0 + ringIdx * 0.5) * 0.5;
+					drawLEDRingSegment(ctx, x, ceilingStart, ceilingEnd, color, alpha);
+					drawLEDRingSegment(ctx, x, Math.floor(height * 0.62), Math.floor(height * 0.88), color, alpha);
+					ringIdx++;
+				}
+
+				// 3. Szimmetrikusan elhelyezett fénylő csillagok
+				for (let x = ringSpacing / 2; x < width; x += ringSpacing) {
+					// Mennyezeti piros csillag
+					drawLEDStar(ctx, x, Math.floor(height * 0.25), 18, '#ff0033', 0.8);
+					// Oldalsó meleg sárga/arany csillagok a csíkok között
+					drawLEDStar(ctx, x + ringSpacing/4, Math.floor(height * 0.50), 22, '#ffcc00', 0.8);
+					drawLEDStar(ctx, x + ringSpacing/4, Math.floor(height * 0.0), 22, '#ffcc00', 0.8);
+					drawLEDStar(ctx, x + ringSpacing/4, Math.floor(height * 1.0), 22, '#ffcc00', 0.8);
+				}
+			}
+			else if (animMode === 9) {
+				// MÓD 10: PULZÁLÓ FÉNYCSATORNA RÁCS [Cyber Neon]
+				const gridW = 120;
+				const color = getSpaceColor(paletteSpace, t, 300);
+				ctx.shadowColor = color;
+				
+				for (let x = 0; x < width; x += gridW) {
+					const alpha = 0.5 + Math.sin(t * 4.0 + x * 0.05) * 0.4;
+					drawLEDRing(ctx, x, height, color, alpha);
+				}
+			}
+			else if (animMode === 10) {
+				// MÓD 11: FUTURISZTIKUS SEBESSÉGVONALAK [Hosszanti csíkok tömkelege lüktető hullámgyűrűkkel]
+				const colorLines = getSpaceColor(paletteSpace, t, 100);
+				ctx.shadowColor = colorLines;
+				
+				// Sűrű hosszanti sebességvonalak a teljes csőhéjon
+				for (let y = 16; y < height; y += 32) {
+					const lineAlpha = 0.35 + Math.sin(t * 2.0 + y * 0.05) * 0.15;
+					drawLEDLine(ctx, y, width, colorLines, lineAlpha);
+				}
+
+				// Keresztbe futó lágy neon gyűrűk
+				const spacing = 200;
+				const offset = (t * 180) % spacing;
+				for (let x = -offset; x < width + spacing; x += spacing) {
+					const ringColor = getSpaceColor(paletteSpace, t, x + 200);
+					ctx.shadowColor = ringColor;
+					drawLEDRing(ctx, x, height, ringColor, 0.85);
+				}
+			}
+			else if (animMode === 11) {
+				// MÓD 12: SOKSZÖG HELIX OSZLOPOK [Kozmikus Arany-Ezüst]
+				const spacing = 180;
+				const offset = (t * 70) % spacing;
+
+				for (let x = -offset; x < width + spacing; x += spacing) {
+					const color = getSpaceColor(paletteGoldSilver, t, x);
+					ctx.shadowColor = color;
+					
+					const colIdx = Math.floor((x + offset) / spacing);
+					const alpha = 0.5 + Math.sin(t * 3.0 + colIdx * 0.7) * 0.5;
+					const radius = 22 + Math.sin(t * 4.0 + colIdx) * 8;
+					
+					for (let y = height / 6; y < height; y += height / 3) {
+						const isPentagon = (colIdx % 2 === 0);
+						drawLEDPolygon(ctx, x, y, radius, isPentagon ? 5 : 6, color, alpha);
+					}
+				}
+			}
+			else if (animMode === 12) {
+				// MÓD 13: KÖREBFUTÓ FÉNYGYŰRŰK (Progresszíven megtelő/elfogyó neon gyűrűk) [Színvilág: Cyber Neon]
+				const spacing = 160;
+				const offset = (t * 60) % spacing;
+
+				for (let x = -offset; x < width + spacing; x += spacing) {
+					const color = getSpaceColor(paletteSpace, t, x);
+					ctx.shadowColor = color;
+
+					// Lágy, szinkronizált kitöltési szint kiszámítása (0.0 és 1.0 között)
+					const fillProgress = 0.5 + Math.sin(t * 3.5 + x * 0.005) * 0.5;
+					const alpha = 0.5 + Math.sin(t * 2.0 + x * 0.01) * 0.5;
+
+					drawLEDRingFilling(ctx, x, height, color, fillProgress, alpha);
+				}
+			}
+			else if (animMode === 13) {
+				// MÓD 14: SŰRŰ KOZMIKUS SPIRÁL (Tömör, spirális menetek áramlása) [Színvilág: Kozmikus Arany-Ezüst]
+				const pitch = 0.4; // A csavarodás sűrűsége (menetemelkedés)
+				const threadSpacing = 120; // Menetek egymástól való távolsága
+				const offset = (t * 180) % threadSpacing;
+
+				for (let xStart = -offset; xStart < width + threadSpacing; xStart += threadSpacing) {
+					const color = getSpaceColor(paletteGoldSilver, t, xStart);
+					ctx.shadowColor = color;
+
+					const ledSpacing = 10; // Nagyon sűrű LED pontok
+					for (let y = 0; y < height; y += ledSpacing) {
+						const x = xStart + y * pitch;
+						if (x >= 0 && x < width) {
+							// A menet minden pontja azonos fázisban lüktet hosszanti pozíció alapján
+							const alpha = 0.5 + Math.sin(t * 4.0 + xStart * 0.01) * 0.5;
+							drawLEDDot(ctx, x, y, 2.5, color, alpha);
+						}
+					}
+				}
+			}
+
+			ctx.restore();
+			texture.needsUpdate = true;
+		});
+
+		// GLOBÁLIS LED SEGÉDFÜGGVÉNYEK A SZINKRONIZÁLT ÉS LÁGY MEGJELENÍTÉSHEZ
+		function drawLEDDot(ctx, x, y, r, color, alpha = 1.0) {
+			if (alpha <= 0.05) return;
+			ctx.globalAlpha = alpha;
+			ctx.fillStyle = color;
+			ctx.beginPath();
+			ctx.arc(x, y, r, 0, Math.PI * 2);
+			ctx.fill();
+			ctx.globalAlpha = 1.0; // Reset
+		}
+
+		function drawLEDRing(ctx, x, height, color, alpha = 1.0) {
+			if (alpha <= 0.05) return;
+			const ledSpacing = 12; // Szabályos sűrűség
+			const dotRadius = 2.5;
+			ctx.globalAlpha = alpha;
+			
+			for (let y = 0; y < height; y += ledSpacing) {
+				drawLEDDot(ctx, x, y, dotRadius, color, alpha);
+			}
+			ctx.globalAlpha = 1.0;
+		}
+
+		function drawLEDRingSegment(ctx, x, yStart, yEnd, color, alpha = 1.0) {
+			if (alpha <= 0.05) return;
+			const ledSpacing = 12;
+			const dotRadius = 2.5;
+			ctx.globalAlpha = alpha;
+			for (let y = yStart; y <= yEnd; y += ledSpacing) {
+				drawLEDDot(ctx, x, y, dotRadius, color, alpha);
+			}
+			ctx.globalAlpha = 1.0;
+		}
+
+		function drawLEDLine(ctx, y, width, color, alpha = 1.0) {
+			if (alpha <= 0.05) return;
+			const ledSpacing = 12;
+			const dotRadius = 2.0;
+			ctx.globalAlpha = alpha;
+			for (let x = 0; x < width; x += ledSpacing) {
+				drawLEDDot(ctx, x, y, dotRadius, color, alpha);
+			}
+			ctx.globalAlpha = 1.0;
+		}
+
+		function drawLEDStar(ctx, cx, cy, maxRadius, color, alpha = 1.0) {
+			if (alpha <= 0.05) return;
+			const dotRadius = 2.0;
+			const step = 8;
+			ctx.globalAlpha = alpha;
+
+			for (let r = 0; r <= maxRadius; r += step) {
+				// Kereszt pontok
+				drawLEDDot(ctx, cx + r, cy, dotRadius, color, alpha);
+				drawLEDDot(ctx, cx - r, cy, dotRadius, color, alpha);
+				drawLEDDot(ctx, cx, cy + r, dotRadius, color, alpha);
+				drawLEDDot(ctx, cx, cy - r, dotRadius, color, alpha);
+
+				// Rombusz átlók 60%-os arányban
+				if (r > 0) {
+					const diag = Math.round(r * 0.6);
+					drawLEDDot(ctx, cx + diag, cy + diag, dotRadius, color, alpha);
+					drawLEDDot(ctx, cx - diag, cy + diag, dotRadius, color, alpha);
+					drawLEDDot(ctx, cx + diag, cy - diag, dotRadius, color, alpha);
+					drawLEDDot(ctx, cx - diag, cy - diag, dotRadius, color, alpha);
+				}
+			}
+			ctx.globalAlpha = 1.0;
+		}
+
+		function drawLEDPolygon(ctx, cx, cy, radius, sides, color, alpha = 1.0) {
+			if (alpha <= 0.05) return;
+			const dotRadius = 2.0;
+			const points = [];
+			ctx.globalAlpha = alpha;
+
+			// Csúcspontok koordinátái
+			for (let i = 0; i < sides; i++) {
+				const angle = (i / sides) * Math.PI * 2 - Math.PI / 2;
+				points.push({
+					x: cx + Math.cos(angle) * radius,
+					y: cy + Math.sin(angle) * radius
+				});
+			}
+
+			// LED pontok interpolálása a csúcsok között az egyenletes rácshoz
+			for (let i = 0; i < sides; i++) {
+				const p1 = points[i];
+				const p2 = points[(i + 1) % sides];
+				const dist = Math.sqrt((p2.x - p1.x) ** 2 + (p2.y - p1.y) ** 2);
+				const steps = Math.ceil(dist / 8); // 8px LED távolság az éleken
+				
+				for (let s = 0; s <= steps; s++) {
+					const t = s / steps;
+					const px = p1.x * (1 - t) + p2.x * t;
+					const py = p1.y * (1 - t) + p2.y * t;
+					drawLEDDot(ctx, px, py, dotRadius, color, alpha);
+				}
+			}
+			ctx.globalAlpha = 1.0;
+		}
+		function drawLEDRingFilling(ctx, x, height, color, fillProgress, alpha = 1.0) {
+			if (alpha <= 0.05 || fillProgress <= 0.01) return;
+			const ledSpacing = 12;
+			const dotRadius = 2.5;
+			ctx.globalAlpha = alpha;
+			
+			// A kitöltött magasság korlátozása a progresszió alapján
+			const limitY = height * Math.min(1.0, Math.max(0.0, fillProgress));
+			for (let y = 0; y < limitY; y += ledSpacing) {
+				drawLEDDot(ctx, x, y, dotRadius, color, alpha);
+			}
+			ctx.globalAlpha = 1.0;
+		}
 		customTextureMaterials.forEach(mat => {
 			// Ha mindig világít, az intenzitás 1.0 (eredeti kép). 
 			// Ha halványodik, akkor beszorozzuk a napszak értékével (max 1.0, min 0.02)
