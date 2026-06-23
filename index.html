@@ -54,28 +54,40 @@
 			<label style="margin-top: 10px; color: #ff7700;">Kiválasztott pálya (Többpályás esetén)</label>
             <input type="number" id="selectedLane" min="1" max="6" value="1" onchange="rebuildSlide()">
         </div>
-	<div class="param-group" style="border-top: 1px solid #444; padding-top: 10px; margin-top: 10px;">
+		<div class="param-group" style="border-top: 1px solid #444; padding-top: 10px; margin-top: 10px;">
     		<label>Statisztika:</label>
     		<div style="font-size: 14px; color: #ffcc00;">
-       			Hossz: <span id="lengthVal">0</span> m<br>
+       		Hossz: <span id="lengthVal">0</span> m<br>
         	Magasság: <span id="heightVal">0</span> m
     	</div>
 </div>
         <div id="segments-container"></div>
-        <button class="add-btn" onclick="addSegmentUI()">+ Új szakasz hozzáadása</button>
-        <button class="add-btn" style="background:#ff7700; margin-top:15px;" onclick="rebuildSlide()">FRISSÍTÉS / ÉPÍTÉS</button>
-		<button class="add-btn" style="background:#17a2b8; margin-top:15px;" onclick="saveTrack()">Mentés (JSON)</button>
-		<button class="add-btn" style="background:#6c757d; margin-top:5px;" onclick="document.getElementById('fileInput').click()">Betöltés</button>
-		<button class="add-btn" style="background:#007bff; margin-top:5px;" onclick="randomBodySlideGenerator()">
-			RANDOM TESTCSÚSZDA (100m)
-		</button>
-		<button class="add-btn" style="background:#9900ff; margin-top:5px;" onclick="randomStarGateGenerator()">
-			RANDOM GUMIS CSÚSZDA (60m)
-		</button>
-		<input type="file" id="fileInput" style="display:none" accept=".json" onchange="loadTrack(event)">
-		<button class="add-btn" id="viewBtn" style="background:#444; margin-top:5px;">Nézet: Belső</button>
-		<label>Sebesség (m/s)</label>
-		<input type="number" id="moveSpeed" step="0.5" value="2.0">    </div>
+			<button class="add-btn" onclick="addSegmentUI()">+ Új szakasz hozzáadása</button>
+			<button class="add-btn" style="background:#ff7700; margin-top:15px;" onclick="rebuildSlide()">FRISSÍTÉS / ÉPÍTÉS</button>
+			<button class="add-btn" style="background:#17a2b8; margin-top:15px;" onclick="saveTrack()">Mentés (JSON)</button>
+			<button class="add-btn" style="background:#6c757d; margin-top:5px;" onclick="document.getElementById('fileInput').click()">Betöltés</button>
+			<button class="add-btn" style="background:#007bff; margin-top:5px;" onclick="randomBodySlideGenerator()">
+				RANDOM TESTCSÚSZDA (100m)
+			</button>
+			<button class="add-btn" style="background:#9900ff; margin-top:5px;" onclick="randomStarGateGenerator()">
+				RANDOM GUMIS CSÚSZDA (60m)
+			</button>
+			<input type="file" id="fileInput" style="display:none" accept=".json" onchange="loadTrack(event)">
+			<button class="add-btn" id="viewBtn" style="background:#444; margin-top:5px;">Nézet: Belső</button>
+			<label>Sebesség (m/s)</label>
+			<input type="number" id="moveSpeed" step="0.5" value="2.0">
+			<label style="color:#00ff88; font-weight:bold;">ALGORITMIKUS HOSSZABBÍTÁS</label>
+			<div style="display:flex; gap:5px; margin-bottom:5px;">
+				<select id="extendPosition" style="flex:1; background:#222; color:#fff; border:1px solid #555;">
+					<option value="end">Pálya végére</option>
+					<option value="start">Pálya elejére</option>
+				</select>
+				<input type="number" id="extendCount" value="3" min="1" max="10" style="width:50px; text-align:center; background:#222; color:#fff; border:1px solid #555;">
+			</div>
+			<button class="add-btn" style="background:#00ff88; color:#000; font-weight:bold; margin-top:5px;" onclick="algorithmicExtend()">
+				KITERJESZTÉS GENERÁLÁSA
+			</button>
+		</div>
 <script type="importmap">
     {
         "imports": {
@@ -96,7 +108,204 @@
     import * as THREE from 'three';
 	import { OrbitControls } from 'three/addons/controls/OrbitControls.js';
 
-	
+	window.algorithmicExtend = function() {
+		if (!PARAMS.segments || PARAMS.segments.length === 0) {
+			alert("A tanuláshoz szükség van legalább egy meglévő szakaszra!");
+			return;
+		}
+
+		const count = parseInt(document.getElementById('extendCount').value) || 3;
+		const position = document.getElementById('extendPosition').value || 'end';
+		const src = PARAMS.segments;
+
+		// 1. Statisztikai elemzés (Átlagértékek kiszámítása)
+		const straights = src.filter(s => s.type === 'straight');
+		const turns = src.filter(s => s.type === 'turn');
+
+		const avgLen = straights.length > 0 ? straights.reduce((acc, s) => acc + s.len, 0) / straights.length : 6;
+		const avgRadius = turns.length > 0 ? turns.reduce((acc, s) => acc + s.radius, 0) / turns.length : 4;
+		const avgAngle = turns.length > 0 ? turns.reduce((acc, s) => acc + s.angle, 0) / turns.length : 90;
+		const avgSlope = src.reduce((acc, s) => acc + (s.slope || 0.055), 0) / src.length;
+		const avgDiameter = src.reduce((acc, s) => acc + (s.diameter || 2.0), 0) / src.length;
+
+		const colors = src.map(s => s.color || '#ffcc00');
+		const innerColors = src.map(s => s.innerColor || '#000000');
+		const lights = src.map(s => s.light || 'rings');
+		const shapes = src.map(s => s.shape || 'circle');
+
+		// 2. Szimulált útvonal-követő az indítótorony (0,0) ütközéseinek elkerülésére
+		let simX = 0, simZ = 0, simYaw = -Math.PI / 2;
+		src.forEach(s => {
+			if (s.type === 'straight') {
+				const l = s.len || 5;
+				simX += Math.cos(simYaw) * l;
+				simZ += Math.sin(simYaw) * l;
+			} else if (s.type === 'turn') {
+				const r = s.radius || 4;
+				const aRad = (s.angle || 90) * Math.PI / 180;
+				const isLeft = (s.dir === 'left');
+				const sweep = isLeft ? -aRad : aRad;
+				const centerAngle = simYaw + (isLeft ? -Math.PI/2 : Math.PI/2);
+				const centerX = simX + Math.cos(centerAngle) * r;
+				const centerZ = simZ + Math.sin(centerAngle) * r;
+				const startAngle = Math.atan2(simZ - centerZ, simX - centerX);
+				simX = centerX + Math.cos(startAngle + sweep) * r;
+				simZ = centerZ + Math.sin(startAngle + sweep) * r;
+				simYaw += sweep;
+			}
+		});
+
+		// 3. Markov-lánc mátrixok felállítása sorrendiség tanulásához
+		const transitions = {
+			type: {},
+			light: {},
+			shape: {},
+			dir: {}
+		};
+
+		for (let i = 0; i < src.length - 1; i++) {
+			const curr = src[i];
+			const next = src[i+1];
+
+			if (!transitions.type[curr.type]) transitions.type[curr.type] = [];
+			transitions.type[curr.type].push(next.type);
+
+			if (!transitions.light[curr.light]) transitions.light[curr.light] = [];
+			transitions.light[curr.light].push(next.light);
+
+			if (!transitions.shape[curr.shape]) transitions.shape[curr.shape] = [];
+			transitions.shape[curr.shape].push(next.shape);
+
+			if (curr.type === 'turn' && next.type === 'turn') {
+				if (!transitions.dir[curr.dir]) transitions.dir[curr.dir] = [];
+				transitions.dir[curr.dir].push(next.dir);
+			}
+		}
+
+		const getRandom = (arr, fallback) => {
+			if (!arr || arr.length === 0) return fallback;
+			return arr[Math.floor(Math.random() * arr.length)];
+		};
+
+		const mutate = (val, range = 0.15) => {
+			return val * (1 + (Math.random() - 0.5) * range);
+		};
+
+		// Összeférhetőségi szabályok a fényekhez szegmenstípus alapján
+		const straightOnlyLights = ['strips', 'center_tris', 'water_curtain', 'text'];
+		const turnOnlyLights = ['turn_circles', 'turn_droplets'];
+
+		const getValidLight = (type, predictedLight) => {
+			if (type === 'straight' && turnOnlyLights.includes(predictedLight)) {
+				const ok = lights.filter(l => !turnOnlyLights.includes(l));
+				return ok.length > 0 ? getRandom(ok, 'rings') : 'rings';
+			}
+			if (type === 'turn' && straightOnlyLights.includes(predictedLight)) {
+				const ok = lights.filter(l => !straightOnlyLights.includes(l));
+				return ok.length > 0 ? getRandom(ok, 'rings') : 'rings';
+			}
+			return predictedLight;
+		};
+
+		// 4. Predikciós ciklus futtatása biztonsági ellenőrzésekkel
+		const generated = [];
+		let currentRef = position === 'end' ? src[src.length - 1] : src[0];
+
+		for (let g = 0; g < count; g++) {
+			let nextType = getRandom(transitions.type[currentRef.type], getRandom(src.map(s => s.type), 'straight'));
+			
+			// Szabály 3: Ha a pálya végére extendelünk, a legutolsó elemnek kötelezően egyenesnek kell lennie
+			if (position === 'end' && g === count - 1) {
+				nextType = 'straight';
+			}
+
+			// Szabály 2: Ütközéselkerülés szimulációja az indítótoronnyal (0,0)
+			if (nextType === 'turn') {
+				const tempRadius = Math.max(2, Math.round(mutate(turns.length > 0 ? getRandom(turns.map(s => s.radius), avgRadius) : avgRadius, 0.1) * 10) / 10);
+				const tempAngleRad = Math.max(15, Math.min(180, Math.round(mutate(turns.length > 0 ? getRandom(turns.map(s => s.angle), avgAngle) : avgAngle, 0.15) / 15) * 15)) * Math.PI / 180;
+				const tempDir = getRandom(transitions.dir[currentRef.dir], currentRef.dir === 'left' ? 'right' : 'left');
+				
+				const sweep = (tempDir === 'left') ? -tempAngleRad : tempAngleRad;
+				const centerAngle = simYaw + (tempDir === 'left' ? -Math.PI/2 : Math.PI/2);
+				const centerX = simX + Math.cos(centerAngle) * tempRadius;
+				const centerZ = simZ + Math.sin(centerAngle) * tempRadius;
+				const startAngle = Math.atan2(simZ - centerZ, simX - centerX);
+				const endAngle = startAngle + sweep;
+				
+				const testX = centerX + Math.cos(endAngle) * tempRadius;
+				const testZ = centerZ + Math.sin(endAngle) * tempRadius;
+
+				// Ha a kanyar visszavinné a csúszdát a torony 7 méteres körzetébe, helyette egyenest építünk
+				if (Math.sqrt(testX * testX + testZ * testZ) < 7.0) {
+					nextType = 'straight';
+				}
+			}
+
+			// Szabály 1: Fény összeférhetőség ellenőrzése
+			const rawLight = getRandom(transitions.light[currentRef.light], getRandom(lights, 'rings'));
+			const nextLight = getValidLight(nextType, rawLight);
+
+			const nextShape = getRandom(transitions.shape[currentRef.shape], getRandom(shapes, 'circle'));
+			const nextColor = getRandom(colors, '#ffcc00');
+			const nextInnerColor = getRandom(innerColors, '#000000');
+			const nextSlope = Math.max(0.01, Math.min(0.2, mutate(currentRef.slope || avgSlope, 0.1)));
+			const nextDiameter = Math.max(1.0, Math.min(4.0, mutate(currentRef.diameter || avgDiameter, 0.05)));
+
+			const newSeg = {
+				type: nextType,
+				light: nextLight,
+				shape: nextShape,
+				color: nextColor,
+				innerColor: nextInnerColor,
+				slope: nextSlope,
+				diameter: nextDiameter,
+				lanes: currentRef.lanes || 3,
+				starsScale: currentRef.starsScale || 1.0,
+				textValue: currentRef.textValue || 'BLACK HOLE'
+			};
+
+			if (nextType === 'straight') {
+				const baseLen = straights.length > 0 ? getRandom(straights.map(s => s.len), avgLen) : avgLen;
+				newSeg.len = Math.max(1, Math.round(mutate(baseLen, 0.20) * 10) / 10);
+				
+				// Szimulált koordináta frissítése egyeneshez
+				simX += Math.cos(simYaw) * newSeg.len;
+				simZ += Math.sin(simYaw) * newSeg.len;
+			} else {
+				const baseRadius = turns.length > 0 ? getRandom(turns.map(s => s.radius), avgRadius) : avgRadius;
+				const baseAngle = turns.length > 0 ? getRandom(turns.map(s => s.angle), avgAngle) : avgAngle;
+				
+				newSeg.radius = Math.max(2, Math.round(mutate(baseRadius, 0.10) * 10) / 10);
+				newSeg.angle = Math.max(15, Math.min(180, Math.round(mutate(baseAngle, 0.15) / 15) * 15)); 
+				newSeg.dir = getRandom(transitions.dir[currentRef.dir], currentRef.dir === 'left' ? 'right' : 'left');
+
+				// Szimulált koordináta frissítése kanyarhoz
+				const aRad = newSeg.angle * Math.PI / 180;
+				const sweep = (newSeg.dir === 'left') ? -aRad : aRad;
+				const centerAngle = simYaw + (newSeg.dir === 'left' ? -Math.PI/2 : Math.PI/2);
+				const centerX = simX + Math.cos(centerAngle) * newSeg.radius;
+				const centerZ = simZ + Math.sin(centerAngle) * newSeg.radius;
+				const startAngle = Math.atan2(simZ - centerZ, simX - centerX);
+				
+				simX = centerX + Math.cos(startAngle + sweep) * newSeg.radius;
+				simZ = centerZ + Math.sin(startAngle + sweep) * newSeg.radius;
+				simYaw += sweep;
+			}
+
+			generated.push(newSeg);
+			currentRef = newSeg;
+		}
+
+		// 5. Beillesztés a megfelelő helyre
+		if (position === 'start') {
+			PARAMS.segments.unshift(...generated);
+		} else {
+			PARAMS.segments.push(...generated);
+		}
+
+		renderUI();
+		rebuildSlide();
+	};
 	
 
 	let isExternal = false;
