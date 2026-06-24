@@ -1741,8 +1741,8 @@
 				tex.wrapS = THREE.RepeatWrapping;
 				tex.wrapT = THREE.RepeatWrapping;
 				
-				segmentMatIn = new THREE.MeshBasicMaterial({ map: tex, color: 0xffffff, side: THREE.FrontSide });
-				
+				// ÚJ: A transparent: true lehetővé teszi, hogy az üres vászonrészeken átüssön a külső cső (beszűrődő fény)
+				segmentMatIn = new THREE.MeshBasicMaterial({ map: tex, color: 0xffffff, side: THREE.FrontSide });				
 				if (lastTunnelSeed === null) {
 					lastTunnelSeed = Math.random() * 800;
 				}
@@ -2603,8 +2603,8 @@
 					const spacing = 3.0 / 8; 
 					
 					for (let d = currentDist + spacing / 2; d < segEnd; d += spacing) {
-						// Hajszálvékony (3.5 cm széles), falba simuló körkörös LED kijelző sáv
-						const ringGeo = new THREE.CylinderGeometry(R - 0.004, R - 0.004, 0.035, 64, 1, true);
+						// MÓDOSÍTVA: 2 cm vastag (0.02 m), falba simuló körkörös LED sáv
+						const ringGeo = new THREE.CylinderGeometry(R - 0.004, R - 0.004, 0.02, 64, 1, true);
 						const ringMesh = new THREE.Mesh(ringGeo, ringMat);
 						
 						// Pozicionálás és orientáció a cső tangense mentén
@@ -3761,548 +3761,630 @@
 			const colorHex = hslToHex(hue, 1.0, 0.5);
 			led.material.color.setHex(colorHex);
 		});
-		// FUTURISZTIKUS ALAGÚT (FULL LED CSŐ) 12-FÉLE LÁGY, SZINKRONIZÁLT ANIMÁCIÓJA ÚJ FORMÁKKAL ÉS SZÍNVILÁGOKKAL
+		// === GLOBÁLIS FULL LED TUNNEL: 22 ELFORGATOTT, TELJES KITÖLTÉSŰ ANIMÁCIÓ ===
 		tunnelDisplays.forEach(td => {
 			const t = time;
 			if (!td.lastUpdate) td.lastUpdate = 0;
-			if (t - td.lastUpdate < 0.033) return; // Limitálva ~30 FPS-re
+			if (t - td.lastUpdate < 0.03) return; // ~30 FPS limit
 			td.lastUpdate = t;
-			const { canvas, ctx, texture, width, height, seed, len, diameter, isRingsOnly, innerColor } = td;
 			
-			ctx.save(); // Fő mentés a teljes kijelzőhöz
-			try {
-				// Fekete háttér tisztítása
-				ctx.clearRect(0, 0, width, height);
-				ctx.fillStyle = '#000000';
-				ctx.fillRect(0, 0, width, height);
-				
-				if (isRingsOnly) {
-					ctx.beginPath();
-					const ringSpacing = (3.0 * 150) / 8; // 56.25 px távolság a gyűrűk között
-					const ringWidth = 14; // A vékony LED kijelző gyűrűk szélessége képpontban
-					
-					for (let x = ringSpacing / 2; x < width; x += ringSpacing) {
-						ctx.rect(x - ringWidth / 2, 0, ringWidth, height);
-					}
-					ctx.clip(); // Minden további rajzolást (animációt) erre a 8 gyűrűsávra korlátozunk
-				}
+			const { canvas, ctx, texture, width, height, seed, len, diameter, isRingsOnly, innerColor } = td;
 
-				// Optimalizált lágy neon ragyogás beállítása (a 6 túl lassú volt, a 3 vajsima 60 FPS-t ad)
-				ctx.shadowBlur = 3;
-				
-				const paletteClassic = [0xff0000, 0x00ff00, 0xffff00, 0x0000ff]; // 1. Klasszikus Szivárvány
-				const paletteSpace = [0x00ffff, 0x0088ff, 0x9900ff, 0xff00ff];   // 2. Cyber Neon
-				const paletteGoldSilver = [0xffcc00, 0xffffff, 0xffaa00, 0xdddddd]; // 3. Kozmikus Arany-Ezüst
-				
-				const getSpaceColor = (palette, timeOffset, xPos) => {
-					const colorIdx = Math.abs(Math.floor(timeOffset * 1.5 + xPos * 0.005 + seed * 0.1));
-					const rawHex = palette[colorIdx % palette.length];
-					return "#" + rawHex.toString(16).padStart(6, '0');
+			// --- KÖZÖS LED PONT RAJZOLÓ SEGÉDFÜGGVÉNY ---
+			// 1.5 pixel sugár = 3 pixel átmérő, ami 150 px/m felbontás mellett pontosan 2 cm vastagságú LED pontot ad.
+			const drawLEDPixel = (ctx, x, y, color, alpha = 1.0) => {
+				ctx.globalAlpha = Math.min(1.0, Math.max(0, alpha));
+				ctx.fillStyle = color;
+				ctx.beginPath();
+				ctx.arc(x, y, 1.5, 0, Math.PI * 2);
+				ctx.fill();
+			};
+
+			// --- 1. ESET: RGB LED GYŰRŰK (CSAK PONTOKBÓL ÁLLÓ DIGITÁLIS GYŰRŰK) ---
+			if (isRingsOnly) {
+				const ringSpacing = (3.0 * 150) / 8; // 56.25 px távolság a gyűrűk között
+				const ringAnimMode = Math.floor((t + seed) / 5.0) % 6;
+
+				// Háttér letörlése
+				ctx.fillStyle = innerColor || '#000000';
+				ctx.fillRect(0, 0, width, height);
+
+				// LED pontok függőleges gyűrűvé fűzése
+				const drawRingOfDots = (x, color, alpha = 1.0, patternFn) => {
+					const dotSpacing = 6; // LED pixelek közötti távolság a gyűrű ívén (pixelben)
+					for (let y = 0; y < height; y += dotSpacing) {
+						const localAlpha = patternFn ? patternFn(y) : 1.0;
+						if (localAlpha > 0) {
+							drawLEDPixel(ctx, x, y, color, alpha * localAlpha);
+						}
+					}
 				};
 
-				const animMode = Math.floor((t + seed) / 5.0) % 14;
-
-				if (isRingsOnly) {
-					// ==========================================
-					// DEDIKÁLT GYŰRŰ-SPECIFIKUS ANIMÁCIÓK (6 MÓD)
-					// ==========================================
-					const ringAnimMode = Math.floor((t + seed) / 5.0) % 6;
-					const ringSpacing = (3.0 * 150) / 8;
-
+				let ringIdx = 0;
+				for (let x = ringSpacing / 2; x < width; x += ringSpacing) {
 					if (ringAnimMode === 0) {
-						// 1. MÓD: SZIVÁRVÁNY KÖRHINTA (JAVÍTVA: A nem létező fv. lecserélve natív hsl() stringre)
-						for (let x = ringSpacing / 2; x < width; x += ringSpacing) {
-							const ledSpacing = 12;
-							for (let y = 0; y < height; y += ledSpacing) {
-								const hueDeg = Math.round(((t * 0.5 + x * 0.001 + (y / height)) % 1.0) * 360);
-								drawLEDDot(ctx, x, y, 2.5, `hsl(${hueDeg}, 100%, 50%)`, 0.9);
-							}
-						}
+						// 1. MÓD: SZÍNHULLÁM CHASE
+						const hue = (t * 0.4 - ringIdx * 0.1) % 1.0;
+						const color = `hsl(${Math.round(hue * 360)}, 100%, 50%)`;
+						drawRingOfDots(x, color, 1.0);
 					}
 					else if (ringAnimMode === 1) {
-						// 2. MÓD: SUHANÓ ARANY FUTÓFÉNY
-						for (let x = ringSpacing / 2; x < width; x += ringSpacing) {
-							const color = getSpaceColor(paletteGoldSilver, t, x);
-							ctx.shadowColor = color;
-							drawLEDRingChaser(ctx, x, height, color, t * 10.0 + x * 0.05);
-						}
+						// 2. MÓD: KÉTIRÁNYÚ JELZÉS
+						const totalRings = Math.ceil(width / ringSpacing);
+						const centerRing = totalRings / 2;
+						const distFromCenter = Math.abs(ringIdx - centerRing);
+						const wave = Math.sin(distFromCenter * 0.8 - t * 8.0);
+						const alpha = Math.max(0.1, (wave + 1) / 2);
+						drawRingOfDots(x, "#00ffff", alpha);
 					}
 					else if (ringAnimMode === 2) {
-						// 3. LÉLEGZŐ NEONUDVAR
-						for (let x = ringSpacing / 2; x < width; x += ringSpacing) {
-							const color = getSpaceColor(paletteClassic, t, x);
-							ctx.shadowColor = color;
-							const alpha = 0.5 + Math.sin(t * 3.0 + x * 0.01) * 0.5;
-							drawLEDRing(ctx, x, height, color, alpha);
-						}
+						// 3. MÓD: STROBOSZKÓP SWAP
+						const toggle = Math.floor(t * 8.0) % 2;
+						const isLit = (ringIdx % 2 === toggle);
+						const color = isLit ? "#ff00ff" : "rgba(255, 0, 255, 0.15)";
+						drawRingOfDots(x, color, 1.0);
 					}
 					else if (ringAnimMode === 3) {
-						// 4. PROGRESSZÍV GYŰRŰ TÖLTÉS
-						for (let x = ringSpacing / 2; x < width; x += ringSpacing) {
-							const color = getSpaceColor(paletteSpace, t, x);
-							ctx.shadowColor = color;
-							const fillProgress = 0.5 + Math.sin(t * 3.0 + x * 0.005) * 0.5;
-							drawLEDRingFilling(ctx, x, height, color, fillProgress, 0.85);
-						}
+						// 4. MÓD: SPIRÁLIS EMELKEDÉS (Gyűrűnként eltolt pontszerű forgás)
+						const angleOffset = ringIdx * 0.5 - t * 5.0;
+						const patternFn = (y) => {
+							const val = Math.sin((y / height) * Math.PI * 2 + angleOffset);
+							return Math.max(0.1, (val + 1) / 2);
+						};
+						drawRingOfDots(x, "#00ff00", 1.0, patternFn);
 					}
 					else if (ringAnimMode === 4) {
-						// 5. VÁLTAKOZÓ ARANY-EZÜST PÁROK
-						let idx = 0;
-						for (let x = ringSpacing / 2; x < width; x += ringSpacing) {
-							const isEven = (idx % 2 === 0);
-							const color = isEven ? '#ffcc00' : '#ffffff';
-							ctx.shadowColor = color;
-							const pulse = Math.sin(t * 4.0 + (isEven ? 0 : Math.PI));
-							const alpha = 0.5 + pulse * 0.5;
-							drawLEDRing(ctx, x, height, color, alpha);
-							idx++;
-						}
+						// 5. MÓD: LÁGY LÉLEGZŐ ARANY
+						const pulse = (Math.sin(t * 3.0) + 1) / 2;
+						const alpha = 0.15 + pulse * 0.85;
+						drawRingOfDots(x, "#ffc800", alpha);
 					}
 					else if (ringAnimMode === 5) {
-						// 6. METEOR ZUHATAG
-						for (let x = ringSpacing / 2; x < width; x += ringSpacing) {
-							const color = getSpaceColor(paletteClassic, t, x);
-							ctx.shadowColor = color;
-							drawLEDRingCascade(ctx, x, height, color, t * 5.0);
-						}
+						// 6. MÓD: RAGYOGÓ KOZMIKUS ADATZÁPOR
+						const patternFn = (y) => {
+							const rand = Math.sin(x * 0.05 + y * 0.1 + t * 12.0);
+							return rand > 0.6 ? 1.0 : 0.12;
+						};
+						drawRingOfDots(x, "#ffffff", 1.0, patternFn);
 					}
-				} else if (td.isStrips) {
-					// ==========================================
-					// JAVÍTVA: A HOSSZANTI CSÍKOK MASZKOLT ANIMÁCIÓJA (FINOMHANGOLT)
-					// ==========================================
-					const numStrips = 14;
-					const rowHeight = height / numStrips;
-					const stripWidth = 6; // JAVÍTVA: Vékonyabb sávok (10px), hogy precízen a LED alá essenek
+					ringIdx++;
+				}
+				
+				ctx.globalAlpha = 1.0;
+				texture.needsUpdate = true;
+				return;
+			}
 
-					// 1. Maszk definiálása a 14 hosszanti csíkhoz
-					ctx.beginPath();
-					for (let i = 0; i < numStrips; i++) {
-						const y = i * rowHeight + rowHeight / 2;
-						ctx.rect(0, y - stripWidth / 2, width, stripWidth);
-					}
-					ctx.clip(); // Csak a vékony csíkok területét engedjük átvilágítani
+			// --- 2. ESET: HOSSZANTI LED CSÍKOK (UDVARMENTES, PONTOKBÓL ÁLLÓ KIALAKÍTÁS) ---
+			if (td.isStrips) {
+				ctx.save();
+				
+				// Alap csőszín sötétítése
+				ctx.fillStyle = '#000000';
+				ctx.fillRect(0, 0, width, height);
 
-					// 2. Narancssárga beszűrődő háttérfény kirajzolása a sávok mögé (ha a globális opció aktív)
-					// JAVÍTVA: Csökkentett opacitás (0.35), hogy a futó LED animációk színei ne mosódjanak el
-					if (PARAMS.allowLightBleed !== false) {
-						ctx.save();
-						ctx.globalAlpha = 1.0;
-						ctx.fillStyle = "#" + orangeColor.toString(16).padStart(6, '0');
-						ctx.fillRect(0, 0, width, height);
-						ctx.restore();
-					}
+				const pxPerMeter = 150;
+				const numStrips = 14; 
+				const sectionLen = Math.round(2.0 * pxPerMeter); 
+				const numSections = Math.ceil(width / sectionLen);
+				const rotOff = height * 0.25; 
+				
+				const getStripY = (i) => (i * (height / numStrips) + (height / numStrips) / 2 + rotOff + height) % height;
 
-					// 3. LED animációk futtatása a csíkokon
-					const animModeStrips = Math.floor((t + seed) / 5.0) % 4;
+				// Fényáteresztő hatás (opcionális maszkolás)
+				if (PARAMS.allowLightBleed) {
+					ctx.globalCompositeOperation = 'destination-out';
+					ctx.fillStyle = '#ffffff'; 
+					const stripThickness = Math.max(3, Math.round(0.02 * pxPerMeter));
+					for(let i=0; i<numStrips; i++) {
+						ctx.fillRect(0, getStripY(i) - stripThickness/2, width, stripThickness);
+					}
+					ctx.globalCompositeOperation = 'source-over';
+				}
 
-					if (animModeStrips === 0) {
-						// 1. FUTÓFÉNY HULLÁM (Tüzes narancs-sárga futás lefelé)
-						ctx.lineWidth = 2; // Vékonyabb sötét belső mag a 10px-es sávhoz igazítva
-						ctx.strokeStyle = "rgba(0, 0, 0, 0.6)"; 
-						for (let i = 0; i < numStrips; i++) {
-							const y = i * rowHeight + rowHeight / 2;
-							ctx.beginPath(); ctx.moveTo(0, y); ctx.lineTo(width, y); ctx.stroke();
+				// Pontszerű csík rajzoló (fillRect helyett sűrű, kerek LED pontok)
+				const drawLEDSection = (sIdx, secIdx, color, alpha = 1.0) => {
+					if (secIdx < 0 || secIdx >= numSections || alpha <= 0) return;
+					const y = getStripY(sIdx);
+					const startX = secIdx * sectionLen + 2;
+					const endX = (secIdx + 1) * sectionLen - 2;
+					
+					const dotSpacing = 6; // LED pixelek közötti távolság a csík mentén (pixelben)
+					for (let px = startX; px < endX; px += dotSpacing) {
+						drawLEDPixel(ctx, px, y, color, alpha);
+					}
+				};
+
+				const palGoldWhite = ['#ffcc00', '#ffffff']; 
+				const palCosmic = ['#00ffff', '#0088ff', '#9900ff', '#ff00ff']; 
+				const palPrimary = ['#ff0000', '#00ff00', '#ffff00', '#0000ff']; 
+
+				const getWrapDist = (a, b, max) => {
+					let d = Math.abs(a - b) % max;
+					return d > max/2 ? max - d : d;
+				};
+
+				const timeS = t + seed * 0.3;
+				const mode = Math.floor(timeS / 8.0) % 20;
+
+				switch(mode) {
+					case 0: { // 1. SLOW BREATHE [Cosmic]
+						for(let s=0; s<numSections; s++) {
+							const a = (Math.sin(t * 1.2 - s * 0.2) + 1) / 2;
+							for(let i=0; i<numStrips; i++) drawLEDSection(i, s, palCosmic[i % palCosmic.length], a);
 						}
-						for (let i = 0; i < numStrips; i++) {
-							const y = i * rowHeight + rowHeight / 2;
-							const spacing = 120;
-							const offset = (t * 220 + i * 15) % spacing;
-							for (let x = -offset; x < width + spacing; x += spacing) {
-								drawLEDDot(ctx, x, y, 4, "#ffdd00", 1.0);
-								drawLEDDot(ctx, x - 12, y, 3, "#ff3300", 0.8);
-								drawLEDDot(ctx, x - 24, y, 2.5, "#ff3300", 0.5);
+						break;
+					}
+					case 1: { // 2. GENTLE COMET [Gold & White]
+						const head = (t * 2.5) % numSections;
+						for(let s=0; s<numSections; s++) {
+							let dist = head - s;
+							if (dist < 0) dist += numSections;
+							const a = Math.max(0, 1 - dist * 0.15);
+							const color = palGoldWhite[s % palGoldWhite.length];
+							for(let i=0; i<numStrips; i++) drawLEDSection(i, s, color, a);
+						}
+						break;
+					}
+					case 2: { // 3. BI-DIRECTIONAL FLOAT [Primary]
+						const p1 = (t * 1.5) % numSections;
+						const p2 = numSections - ((t * 1.5) % numSections);
+						for(let s=0; s<numSections; s++) {
+							const d1 = Math.max(0, 1 - getWrapDist(p1, s, numSections) * 0.2);
+							const d2 = Math.max(0, 1 - getWrapDist(p2, s, numSections) * 0.2);
+							for(let i=0; i<numStrips; i++) {
+								if (i%2===0) drawLEDSection(i, s, palPrimary[0], d1);
+								else drawLEDSection(i, s, palPrimary[3], d2);
 							}
 						}
+						break;
 					}
-					else if (animModeStrips === 1) {
-						// 2. HELIX CSAVARODÁS (Sávokon átfutó cyber neon pontok)
-						for (let i = 0; i < numStrips; i++) {
-							const y = i * rowHeight + rowHeight / 2;
-							const spacing = 180;
-							const offset = (t * 180 + i * 25) % spacing;
-							for (let x = -offset; x < width + spacing; x += spacing) {
-								const color = (i % 2 === 0) ? "#00ffff" : "#ff00ff";
-								drawLEDDot(ctx, x, y, 4.5, color, 1.0);
-								drawLEDDot(ctx, x - 15, y, 3.5, color, 0.6);
+					case 3: { // 4. SLOW DNA TWIST [Cosmic]
+						for(let s=0; s<numSections; s++) {
+							const twist = (s * 0.4 + t * 2) % numStrips;
+							for(let i=0; i<numStrips; i++) {
+								const d1 = getWrapDist(i, twist, numStrips);
+								const d2 = getWrapDist(i, twist + numStrips/2, numStrips);
+								const a1 = Math.max(0, 1 - d1 * 0.4);
+								const a2 = Math.max(0, 1 - d2 * 0.4);
+								if (a1 > 0) drawLEDSection(i, s, palCosmic[0], a1);
+								if (a2 > 0) drawLEDSection(i, s, palCosmic[2], a2);
 							}
 						}
+						break;
 					}
-					else if (animModeStrips === 2) {
-						// 3. SZIVÁRVÁNYÁRAMLÁS (Smooth spektrum-áramlás)
-						for (let i = 0; i < numStrips; i++) {
-							const y = i * rowHeight + rowHeight / 2;
-							const spacing = 100;
-							const offset = (t * 150) % spacing;
-							for (let x = -offset; x < width + spacing; x += spacing) {
-								const dotHue = (t * 0.2 + x * 0.002 + i / numStrips) % 1.0;
-								drawLEDDot(ctx, x, y, 4, `hsl(${Math.round(dotHue * 360)}, 100%, 50%)`, 1.0);
+					case 4: { // 5. COLOR MORPH [Gold & White]
+						const cIdx = Math.floor(t * 0.5) % palGoldWhite.length;
+						const nextIdx = (cIdx + 1) % palGoldWhite.length;
+						const mix = (t * 0.5) % 1;
+						for(let s=0; s<numSections; s++) {
+							for(let i=0; i<numStrips; i++) {
+								drawLEDSection(i, s, palGoldWhite[cIdx], 1 - mix);
+								drawLEDSection(i, s, palGoldWhite[nextIdx], mix);
 							}
 						}
+						break;
 					}
-					else if (animModeStrips === 3) { // JAVÍTVA: animModeStrips változóra korrigálva az animMode helyett
-						// 4. STROBOSZKÓP GYŰRŰ PULZÁLÁS (Keresztbe futó gyűrűk neonkék aurával)
-						const spacing = 240;
-						const offset = (t * 300) % spacing;
-						for (let x = -offset; x < width + spacing; x += spacing) {
-							ctx.fillStyle = "rgba(255, 255, 255, 0.9)";
-							ctx.fillRect(x - 8, 0, 16, height);
-							ctx.fillStyle = "rgba(0, 34, 255, 0.4)";
-							ctx.fillRect(x - 30, 0, 60, height);
-						}
-					}
-				} else {
-					// Általános Full LED cső animációk (14 mód)
-					if (animMode === 0) {
-						const spacing = 180;
-						const offset = (t * 80) % spacing;
-						for (let x = -offset; x < width + spacing; x += spacing) {
-							const color = getSpaceColor(paletteSpace, t, x);
-							ctx.shadowColor = color;
-							const alpha = 0.5 + Math.sin(t * 3.0 + x * 0.01) * 0.5;
-							drawLEDRing(ctx, x, height, color, alpha);
-						}
-					} 
-					else if (animMode === 1) {
-						const spacing = 200;
-						for (let x = spacing / 2; x < width; x += spacing) {
-							const color = getSpaceColor(paletteGoldSilver, t, x);
-							ctx.shadowColor = color;
-							const radius = 25 + Math.sin(t * 3.0 + x * 0.02) * 10;
-							const alpha = 0.6 + Math.sin(t * 4.0 + x * 0.01) * 0.4;
-							const sides = (Math.floor(x / spacing) % 2 === 0) ? 5 : 6;
-							for (let y = height / 6; y < height; y += height / 3) {
-								drawLEDPolygon(ctx, x, y, radius, sides, color, alpha);
+					case 5: { // 6. ALTERNATING SLOW SWAP [Primary]
+						const a1 = (Math.sin(t * 1.5) + 1) / 2;
+						const a2 = 1 - a1;
+						for(let s=0; s<numSections; s++) {
+							for(let i=0; i<numStrips; i++) {
+								if (s%2===0) drawLEDSection(i, s, palPrimary[2], a1);
+								else drawLEDSection(i, s, palPrimary[3], a2);
 							}
 						}
-					} 
-					else if (animMode === 2) {
-						const colSpacing = 160;
-						for (let x = colSpacing / 2; x < width; x += colSpacing) {
-							const color = getSpaceColor(paletteClassic, t, x);
-							ctx.shadowColor = color;
-							const colIdx = Math.floor(x / colSpacing);
-							const alpha = 0.5 + Math.sin(t * 4.0 + colIdx * Math.PI / 2) * 0.5;
-							for (let y = height / 8; y < height; y += height / 4) {
-								drawLEDStar(ctx, x, y, 22, color, alpha);
+						break;
+					}
+					case 6: { // 7. GENTLE SWEEP [Cosmic]
+						const sweep = (Math.sin(t * 1.2) + 1) / 2 * numSections;
+						for(let s=0; s<numSections; s++) {
+							const d = Math.abs(sweep - s);
+							const a = Math.max(0, 1 - d * 0.2);
+							for(let i=0; i<numStrips; i++) drawLEDSection(i, s, palCosmic[3], a);
+						}
+						break;
+					}
+					case 7: { // 8. DIAGONAL FADE [Gold & White]
+						for(let s=0; s<numSections; s++) {
+							for(let i=0; i<numStrips; i++) {
+								const a = (Math.sin(s * 0.2 + i * 0.3 - t * 1.5) + 1) / 2;
+								drawLEDSection(i, s, palGoldWhite[(s + i) % palGoldWhite.length], a);
 							}
 						}
-					} 
-					else if (animMode === 3) {
-						const spiralSpacing = 2.4 * 150;
-						const offset = (t * 100) % spiralSpacing;
-						for (let x = -offset; x < width + spiralSpacing; x += spiralSpacing) {
-							const color = getSpaceColor(paletteSpace, t, x);
-							ctx.shadowColor = color;
-							const ledSpacing = 16;
-							for (let y = 0; y < height; y += ledSpacing) {
-								const p = y / height;
-								const xPos = x + p * spiralSpacing;
-								const alpha = 0.4 + Math.sin(t * 2.0 + p * Math.PI) * 0.4;
-								drawLEDDot(ctx, xPos, y, 2.5, color, alpha);
+						break;
+					}
+					case 8: { // 9. CENTER OUT SOFT [Primary]
+						const center = numSections / 2;
+						const spread = (t * 1.5) % (center + 4);
+						for(let s=0; s<numSections; s++) {
+							const d = Math.abs(center - s);
+							const a = Math.max(0, 1 - Math.abs(spread - d) * 0.4);
+							for(let i=0; i<numStrips; i++) drawLEDSection(i, s, palPrimary[1], a);
+						}
+						break;
+					}
+					case 9: { // 10. COSMIC RAIN [Cosmic]
+						for(let i=0; i<numStrips; i++) {
+							const drop = (t * (1.5 + (i%3)*0.3) + i*2) % numSections;
+							for(let s=0; s<numSections; s++) {
+								const d = getWrapDist(s, drop, numSections);
+								const a = Math.max(0, 1 - d * 0.15);
+								drawLEDSection(i, s, palCosmic[i % palCosmic.length], a);
 							}
 						}
+						break;
 					}
-					else if (animMode === 4) {
-						const spacing = 220;
-						for (let x = spacing / 2; x < width; x += spacing) {
-							const color = getSpaceColor(paletteClassic, t, x);
-							ctx.shadowColor = color;
-							const size = 20 + Math.sin(t * 4.0 + x * 0.02) * 12;
-							const alpha = 0.5 + Math.sin(t * 3.0 + x * 0.01) * 0.5;
-							for (let y = height / 5; y < height; y += height / 2.5) {
-								drawLEDPolygon(ctx, x, y, size, 4, color, alpha);
+					case 10: { // 11. SMOOTH CHECKERS [Gold & White]
+						for(let s=0; s<numSections; s++) {
+							for(let i=0; i<numStrips; i++) {
+								const a = (Math.sin(s * Math.PI/2 + i * Math.PI/2 + t * 1.5) + 1) / 2;
+								drawLEDSection(i, s, palGoldWhite[i % palGoldWhite.length], a);
 							}
 						}
+						break;
 					}
-					else if (animMode === 5) {
-						for (let i = 0; i < 30; i++) {
-							const color = getSpaceColor(paletteGoldSilver, t, i * 70);
-							ctx.shadowColor = color;
-							const speed = 1.0 + Math.sin(i * 3) * 0.3;
-							const px = (i * 45 + t * 180 * speed + seed) % width;
-							const py = (Math.sin(i * 12 + seed * 0.1) * 0.4 + 0.5) * height;
-							const alpha = 0.4 + Math.sin(t * 3.0 + i) * 0.4;
-							drawLEDDot(ctx, px, py, 2.0, color, alpha);
-						}
-					}
-					else if (animMode === 6) {
-						const blockW = 1.6 * 150;
-						const blockH = height / 3;
-						const cycle = Math.sin(t * 2.5);
-						for (let x = 0; x < width; x += blockW) {
-							for (let y = 0; y < height; y += blockH) {
-								const col = Math.floor(x / blockW);
-								const row = Math.floor(y / blockH);
-								const color = getSpaceColor(paletteSpace, t, x + y);
-								ctx.shadowColor = color;
-								const alpha = (col + row) % 2 === 0 ? (0.5 + cycle * 0.5) : (0.5 - cycle * 0.5);
-								if ((col + row) % 2 === 0) {
-									drawLEDStar(ctx, x + blockW / 2, y + blockH / 2, 20, color, alpha);
-								} else {
-									drawLEDPolygon(ctx, x + blockW / 2, y + blockH / 2, 18, 6, color, alpha);
-								}
+					case 11: { // 12. RAINBOW SINE [Primary]
+						for(let s=0; s<numSections; s++) {
+							for(let i=0; i<numStrips; i++) {
+								const phase = s * 0.15 + i * 0.1 - t * 0.8;
+								const cIdx = Math.floor(Math.abs(phase)) % palPrimary.length;
+								const a = (Math.sin(phase * Math.PI) + 1) / 2;
+								drawLEDSection(i, s, palPrimary[cIdx], a);
 							}
 						}
+						break;
 					}
-					else if (animMode === 7) {
-						const ringSpacing = 1.2 * 150;
-						const offset = (t * 70) % ringSpacing;
-						for (let x = -offset; x < width + ringSpacing; x += ringSpacing) {
-							const color = getSpaceColor(paletteClassic, t, x);
-							ctx.shadowColor = color;
-							const alpha = 0.6 + Math.sin(t * 3.5 + x * 0.02) * 0.4;
-							drawLEDRing(ctx, x, height, color, alpha);
-							drawLEDRing(ctx, x + 25, height, color, alpha * 0.7);
-						}
-					}
-					else if (animMode === 8) {
-						const ringSpacing = 1.8 * 150;
-						const offset = (t * 60) % ringSpacing;
-						const leftStart = Math.floor(height * 0.38);
-						const leftEnd = Math.floor(height * 0.62);
-						let lineIdx = 0;
-						for (let y = leftStart; y <= leftEnd; y += 18) {
-							const color = (lineIdx % 2 === 0) ? '#ff0033' : '#0055ff';
-							ctx.shadowColor = color;
-							drawLEDLine(ctx, y, width, color, 0.75);
-							lineIdx++;
-						}
-						const rightEnd1 = Math.floor(height * 0.12);
-						const rightStart2 = Math.floor(height * 0.88);
-						for (let y = 0; y <= rightEnd1; y += 18) {
-							const color = (y % 36 === 0) ? '#ff0033' : '#0055ff';
-							ctx.shadowColor = color;
-							drawLEDLine(ctx, y, width, color, 0.75);
-						}
-						for (let y = rightStart2; y <= height; y += 18) {
-							const color = (y % 36 === 0) ? '#ff0033' : '#0055ff';
-							ctx.shadowColor = color;
-							drawLEDLine(ctx, y, width, color, 0.75);
-						}
-						const ceilingStart = Math.floor(height * 0.12);
-						const ceilingEnd = Math.floor(height * 0.38);
-						const ceilingColors = ['#00ff33', '#ffcc00', '#00e1ff', '#ff0055'];
-						let ringIdx = 0;
-						for (let x = -offset; x < width + ringSpacing; x += ringSpacing / 3) {
-							const color = ceilingColors[ringIdx % ceilingColors.length];
-							ctx.shadowColor = color;
-							const alpha = 0.5 + Math.sin(t * 3.0 + ringIdx * 0.5) * 0.5;
-							drawLEDRingSegment(ctx, x, ceilingStart, ceilingEnd, color, alpha);
-							drawLEDRingSegment(ctx, x, Math.floor(height * 0.62), Math.floor(height * 0.88), color, alpha);
-							ringIdx++;
-						}
-						for (let x = ringSpacing / 2; x < width; x += ringSpacing) {
-							drawLEDStar(ctx, x, Math.floor(height * 0.25), 18, '#ff0033', 0.8);
-							drawLEDStar(ctx, x + ringSpacing/4, Math.floor(height * 0.50), 22, '#ffcc00', 0.8);
-							drawLEDStar(ctx, x + ringSpacing/4, Math.floor(height * 0.0), 22, '#ffcc00', 0.8);
-							drawLEDStar(ctx, x + ringSpacing/4, Math.floor(height * 1.0), 22, '#ffcc00', 0.8);
-						}
-					}
-					else if (animMode === 9) {
-						const gridW = 120;
-						const color = getSpaceColor(paletteSpace, t, 300);
-						ctx.shadowColor = color;
-						for (let x = 0; x < width; x += gridW) {
-							const alpha = 0.5 + Math.sin(t * 4.0 + x * 0.05) * 0.4;
-							drawLEDRing(ctx, x, height, color, alpha);
-						}
-					}
-					else if (animMode === 10) {
-						const colorLines = getSpaceColor(paletteSpace, t, 100);
-						ctx.shadowColor = colorLines;
-						for (let y = 16; y < height; y += 32) {
-							const lineAlpha = 0.35 + Math.sin(t * 2.0 + y * 0.05) * 0.15;
-							drawLEDLine(ctx, y, width, colorLines, lineAlpha);
-						}
-						const spacing = 200;
-						const offset = (t * 180) % spacing;
-						for (let x = -offset; x < width + spacing; x += spacing) {
-							const ringColor = getSpaceColor(paletteSpace, t, x + 200);
-							ctx.shadowColor = ringColor;
-							drawLEDRing(ctx, x, height, ringColor, 0.85);
-						}
-					}
-					else if (animMode === 11) {
-						const spacing = 180;
-						const offset = (t * 70) % spacing;
-						for (let x = -offset; x < width + spacing; x += spacing) {
-							const color = getSpaceColor(paletteGoldSilver, t, x);
-							ctx.shadowColor = color;
-							const colIdx = Math.floor((x + offset) / spacing);
-							const alpha = 0.5 + Math.sin(t * 3.0 + colIdx * 0.7) * 0.5;
-							const radius = 22 + Math.sin(t * 4.0 + colIdx) * 8;
-							for (let y = height / 6; y < height; y += height / 3) {
-								const isPentagon = (colIdx % 2 === 0);
-								drawLEDPolygon(ctx, x, y, radius, isPentagon ? 5 : 6, color, alpha);
+					case 12: { // 13. SPARSE GENTLE TWINKLE [Cosmic]
+						for(let s=0; s<numSections; s++) {
+							for(let i=0; i<numStrips; i++) {
+								const a = Math.sin(s * 13.5 + i * 7.2 + t * 0.8) * 1.5 - 0.5;
+								if (a > 0) drawLEDSection(i, s, palCosmic[(s + i) % palCosmic.length], Math.min(1, a));
 							}
 						}
+						break;
 					}
-					else if (animMode === 12) {
-						const spacing = 160;
-						const offset = (t * 60) % spacing;
-						for (let x = -offset; x < width + spacing; x += spacing) {
-							const color = getSpaceColor(paletteSpace, t, x);
-							ctx.shadowColor = color;
-							const fillProgress = 0.5 + Math.sin(t * 3.5 + x * 0.005) * 0.5;
-							const alpha = 0.5 + Math.sin(t * 2.0 + x * 0.01) * 0.5;
-							drawLEDRingFilling(ctx, x, height, color, fillProgress, alpha);
-						}
-					}
-					else if (animMode === 13) {
-						const pitch = 0.4;
-						const threadSpacing = 120;
-						const offset = (t * 180) % threadSpacing;
-						for (let xStart = -offset; xStart < width + threadSpacing; xStart += threadSpacing) {
-							const color = getSpaceColor(paletteGoldSilver, t, xStart);
-							ctx.shadowColor = color;
-							const ledSpacing = 10;
-							for (let y = 0; y < height; y += ledSpacing) {
-								const x = xStart + y * pitch;
-								if (x >= 0 && x < width) {
-									const alpha = 0.5 + Math.sin(t * 4.0 + xStart * 0.01) * 0.5;
-									drawLEDDot(ctx, x, y, 2.5, color, alpha);
-								}
+					case 13: { // 14. ROTARY SCAN [Gold & White]
+						const rot = (t * 2.5) % numStrips;
+						for(let s=0; s<numSections; s++) {
+							for(let i=0; i<numStrips; i++) {
+								const d = getWrapDist(i, rot, numStrips);
+								const a = Math.max(0, 1 - d * 0.25);
+								drawLEDSection(i, s, palGoldWhite[s % palGoldWhite.length], a);
 							}
 						}
+						break;
+					}
+					case 14: { // 15. PARALLEL COMETS [Primary]
+						for(let i=0; i<numStrips; i++) {
+							const head = (t * 2.0 + Math.sin(i)*numSections) % numSections;
+							for(let s=0; s<numSections; s++) {
+								let d = head - s;
+								if (d < 0) d += numSections;
+								const a = Math.max(0, 1 - d * 0.15);
+								drawLEDSection(i, s, palPrimary[s % palPrimary.length], a);
+							}
+						}
+						break;
+					}
+					case 15: { // 16. INTERLOCKING SPIRALS [Cosmic]
+						for(let s=0; s<numSections; s++) {
+							const t1 = (s * 0.3 + t * 1.8) % numStrips;
+							const t2 = (-s * 0.3 + t * 1.8 + numStrips) % numStrips;
+							for(let i=0; i<numStrips; i++) {
+								const a1 = Math.max(0, 1 - getWrapDist(i, t1, numStrips) * 0.4);
+								const a2 = Math.max(0, 1 - getWrapDist(i, t2, numStrips) * 0.4);
+								if (a1 > 0) drawLEDSection(i, s, palCosmic[1], a1);
+								if (a2 > 0) drawLEDSection(i, s, palCosmic[3], a2);
+							}
+						}
+						break;
+					}
+					case 16: { // 17. EBBING TIDE [Gold & White]
+						const tide = (Math.sin(t * 1.0) + 1) / 2 * numSections;
+						for(let s=0; s<numSections; s++) {
+							const a = s < tide ? 1.0 : Math.max(0, 1 - (s - tide) * 0.5);
+							for(let i=0; i<numStrips; i++) drawLEDSection(i, s, palGoldWhite[0], a);
+						}
+						break;
+					}
+					case 17: { // 18. SLOW BLOCK SHIFT [Primary]
+						const block = Math.floor(t * 0.4) % numSections;
+						const a = (Math.sin(t * Math.PI) + 1) / 2;
+						for(let s=0; s<numSections; s++) {
+							const isBlock = (s % 6 === block % 6);
+							const alpha = isBlock ? a : 0.05;
+							for(let i=0; i<numStrips; i++) drawLEDSection(i, s, palPrimary[s % palPrimary.length], alpha);
+						}
+						break;
+					}
+					case 18: { // 19. RIPPLE EFFECT [Cosmic]
+						for(let s=0; s<numSections; s++) {
+							const ripple = Math.sin(s * 0.4 - t * 2.5) * 0.5 + 0.5;
+							for(let i=0; i<numStrips; i++) drawLEDSection(i, s, palCosmic[2], ripple * ripple);
+						}
+						break;
+					}
+					case 19: { // 20. NEBULA GLOW [Gold & White]
+						for(let s=0; s<numSections; s++) {
+							for(let i=0; i<numStrips; i++) {
+								const a = (Math.sin(s * 0.3 + i * 0.5 + t * 1.2) + 1) / 2;
+								const cIdx = Math.floor((s + i) * 0.15 + t * 0.3) % palGoldWhite.length;
+								drawLEDSection(i, s, palGoldWhite[cIdx], a * 0.8 + 0.1);
+							}
+						}
+						break;
 					}
 				}
-			} finally {
-				ctx.restore(); // Garantáltan kiüríti a canvas vermét (stack), így soha nem ragad be a clip() vagy a shadowBlur!
+				
+				ctx.restore();
+				texture.needsUpdate = true;
+				return;
+			}
+
+			// --- 3. ESET: KÜLÖNBÖZŐ MÁS GRAFIKAI ANIMÁCIÓK ---
+			ctx.save();
+			ctx.fillStyle = '#000000'; 
+			ctx.fillRect(0, 0, width, height);
+			
+			const timeS = t + seed * 0.2;
+			const mode = Math.floor(timeS / 7.0) % 20; 
+			
+			const rotOff = height * 0.25; 
+			const drawY = (y) => (y + rotOff + height) % height;
+
+			switch(mode) {
+				case 0: { // 1. DATA STREAM
+					ctx.fillStyle = "#00ff66"; ctx.font = "bold 16px monospace";
+					for (let i = 0; i < height; i += 22) {
+						const speed = 60 + (i % 5) * 30;
+						const offset = (t * speed) % width;
+						for (let j = 0; j < 12; j++) {
+							ctx.globalAlpha = Math.max(0.1, 1.0 - (j / 10));
+							ctx.fillText(Math.random() > 0.5 ? "1" : "0", offset - j * 16, drawY(i));
+						}
+					}
+					break;
+				}
+				case 1: { // 2. CYBER GRID
+					ctx.strokeStyle = "rgba(0, 255, 255, 0.6)"; ctx.lineWidth = 2;
+					const sp = 40;
+					const mx = (t * 30) % sp;
+					for(let x = -sp; x < width; x += sp) {
+						ctx.beginPath(); ctx.moveTo(x + mx, 0); ctx.lineTo(x + mx, height); ctx.stroke();
+					}
+					const my = (t * 20) % sp;
+					for(let y = -sp; y < height; y += sp) {
+						ctx.beginPath(); ctx.moveTo(0, drawY(y + my)); ctx.lineTo(width, drawY(y + my)); ctx.stroke();
+					}
+					ctx.fillStyle = "#ffffff";
+					for(let x = -sp; x < width; x += sp) {
+						for(let y = -sp; y < height; y += sp) {
+							if ((x + y) % 80 === 0) drawLEDPixel(ctx, x + mx, drawY(y + my), "#ffffff", 0.9);
+						}
+					}
+					break;
+				}
+				case 2: { // 3. OSCILLOSCOPE SINE
+					for (let i = 0; i < 5; i++) {
+						ctx.strokeStyle = `hsla(${i * 72 + t*20}, 100%, 60%, 0.8)`; ctx.lineWidth = 4;
+						ctx.beginPath();
+						for (let x = 0; x <= width; x += 15) {
+							const y = drawY(height / 2 + Math.sin(x * 0.02 + t * 3 + i * 1.2) * 80 + (i-2)*20);
+							if (x === 0) ctx.moveTo(x, y); else ctx.lineTo(x, y);
+						}
+						ctx.stroke();
+					}
+					break;
+				}
+				case 3: { // 4. CIRCUIT NODES
+					ctx.strokeStyle = "rgba(0, 255, 120, 0.8)"; ctx.lineWidth = 3;
+					for (let i = 0; i < 12; i++) {
+						const y = drawY(i * (height / 12) + 15);
+						const x = (t * 120 + i * 90) % (width + 150) - 50;
+						ctx.beginPath(); ctx.moveTo(x, y); ctx.lineTo(x + 60, y); ctx.lineTo(x + 90, y + 30); ctx.lineTo(x + 150, y + 30); ctx.stroke();
+						drawLEDPixel(ctx, x + 150, y + 30, "#ffffff", 0.9);
+					}
+					break;
+				}
+				case 4: { // 5. RADAR SWEEPS
+					for (let i = 0; i < 6; i++) {
+						const scanX = (t * 150 + i * (width / 6)) % width;
+						const grad = ctx.createLinearGradient(scanX - 120, 0, scanX, 0);
+						grad.addColorStop(0, "transparent"); grad.addColorStop(1, "rgba(255, 0, 255, 0.5)");
+						ctx.fillStyle = grad; ctx.fillRect(scanX - 120, drawY(i * (height/6)), 120, height/6 + 5);
+						ctx.fillStyle = "rgba(255, 100, 255, 0.9)"; ctx.fillRect(scanX, drawY(i * (height/6)), 4, height/6 + 5);
+					}
+					break;
+				}
+				case 5: { // 6. DATA PACKETS
+					for(let i = 0; i < 25; i++) {
+						const x = (i * 110 + t * 400) % (width + 200) - 100;
+						const y = drawY(i * (height / 25));
+						ctx.fillStyle = `hsla(${180 + i*5}, 100%, 60%, 0.7)`; ctx.fillRect(x, y, 60, 4);
+						ctx.fillStyle = "#ffffff"; ctx.fillRect(x + 50, y - 2, 10, 8);
+					}
+					break;
+				}
+				case 6: { // 7. DNA HELIX
+					ctx.lineWidth = 3;
+					for (let x = 0; x <= width; x += 25) {
+						const y1 = height / 2 + Math.sin(x * 0.04 + t * 4) * 60;
+						const y2 = height / 2 + Math.sin(x * 0.04 + t * 4 + Math.PI) * 60;
+						const y3 = height / 2 + Math.sin(x * 0.04 + t * 4 + Math.PI/2) * 60;
+						const y4 = height / 2 + Math.sin(x * 0.04 + t * 4 + Math.PI*1.5) * 60;
+						
+						if (x % 50 === 0) {
+							ctx.strokeStyle = "rgba(0, 150, 255, 0.6)"; ctx.beginPath(); ctx.moveTo(x, drawY(y1)); ctx.lineTo(x, drawY(y2)); ctx.stroke();
+							ctx.strokeStyle = "rgba(255, 0, 150, 0.6)"; ctx.beginPath(); ctx.moveTo(x, drawY(y3)); ctx.lineTo(x, drawY(y4)); ctx.stroke();
+						}
+						drawLEDPixel(ctx, x, drawY(y1), "#00ffff", 0.9); drawLEDPixel(ctx, x, drawY(y2), "#00ffff", 0.9);
+						drawLEDPixel(ctx, x, drawY(y3), "#ff00ff", 0.9); drawLEDPixel(ctx, x, drawY(y4), "#ff00ff", 0.9);
+					}
+					break;
+				}
+				case 7: { // 8. FLOATING HUD ARCS
+					for (let i = 0; i < 10; i++) {
+						const cx = (i * (width / 10) + t * 50) % width;
+						const cy = drawY((i * 67) % height);
+						ctx.strokeStyle = `hsla(${i * 36 + t*10}, 100%, 60%, 0.8)`; ctx.lineWidth = 4;
+						ctx.beginPath(); ctx.arc(cx, cy, 45, t*2 + i, t*2 + i + Math.PI*1.2); ctx.stroke();
+						ctx.beginPath(); ctx.arc(cx, cy, 25, -t*3 + i, -t*3 + i + Math.PI*0.8); ctx.stroke();
+						drawLEDPixel(ctx, cx, cy, 3, "#ffffff", 0.8);
+					}
+					break;
+				}
+				case 8: { // 9. QUANTUM CONSTELLATION
+					const pts = [];
+					for(let i=0; i<30; i++) pts.push({x: (i*45 + t*35)%width, y: drawY((i*i*53)%height)});
+					ctx.strokeStyle = "rgba(255, 255, 255, 0.4)"; ctx.lineWidth = 2;
+					pts.forEach((p, idx) => {
+						drawLEDPixel(ctx, p.x, p.y, 4, "#ffffff", 0.8);
+						if(idx > 0 && Math.abs(p.x - pts[idx-1].x) < 150) {
+							ctx.beginPath(); ctx.moveTo(p.x, p.y); ctx.lineTo(pts[idx-1].x, pts[idx-1].y); ctx.stroke();
+						}
+					});
+					break;
+				}
+				case 9: { // 10. RADAR PINGS
+					for(let i = 0; i < 8; i++) {
+						const cx = (i * (width/8) + t * 60) % width;
+						const cy = drawY(height / 2 + Math.sin(i * Math.PI/4) * 80);
+						const r = ((t * 50 + i * 25) % 80);
+						ctx.strokeStyle = `rgba(0, 255, 150, ${0.8 * (1.0 - (r/80))})`; ctx.lineWidth = 4;
+						ctx.beginPath(); ctx.arc(cx, cy, r, 0, Math.PI*2); ctx.stroke();
+						drawLEDPixel(ctx, cx, cy, 5, "#ffffff", 1.0 - (r/80));
+					}
+					break;
+				}
+				case 10: { // 11. BARCODE FADE
+					for (let x = 0; x < width; x += 25) {
+						const w = 4 + (x % 8);
+						const alpha = 0.2 + Math.sin(x * 0.05 + t * 4) * 0.6;
+						if (alpha > 0) {
+							ctx.fillStyle = `rgba(0, 200, 255, ${alpha})`;
+							ctx.fillRect(x, 0, w, height);
+						}
+					}
+					break;
+				}
+				case 11: { // 12. LASER BEAMS
+					for(let i=0; i<8; i++) {
+						const y = drawY(i * (height / 8) + 20);
+						ctx.fillStyle = `hsla(${i*45 + t*30}, 100%, 60%, 0.6)`;
+						ctx.fillRect(0, y, width, 4);
+						const x = (t * 400 + i * 150) % width;
+						ctx.fillStyle = "#ffffff";
+						ctx.fillRect(x, y - 2, 40, 8);
+					}
+					break;
+				}
+				case 12: { // 13. PLASMA WISPS
+					for (let i = 0; i < 6; i++) {
+						const x = (t * 60 + i * 180) % width;
+						const y = drawY(height / 2 + Math.sin(t*2 + i) * 60);
+						const grad = ctx.createRadialGradient(x, y, 0, x, y, 100);
+						grad.addColorStop(0, `hsla(${280 + i*40 + t*50}, 100%, 60%, 0.6)`);
+						grad.addColorStop(1, "transparent");
+						ctx.fillStyle = grad; ctx.fillRect(x - 100, y - 100, 200, 200);
+					}
+					break;
+				}
+				case 13: { // 14. DIGITAL SNOW
+					ctx.fillStyle = "#ffffff";
+					for(let i = 0; i < 150; i++) {
+						const x = (i * 37 + t * 80) % width;
+						const y = drawY((i * 61 + Math.sin(t*3 + i)*25) % height);
+						ctx.globalAlpha = 0.3 + (i % 5) * 0.15;
+						ctx.fillRect(x, y, 4, 4);
+					}
+					break;
+				}
+				case 14: { // 15. PULSING TRIANGLES
+					for(let i=0; i<15; i++) {
+						const cx = (i * (width/15) + t * 40) % width;
+						const cy = drawY((i * 97) % height);
+						const r = 20 + Math.sin(t * 4 + i) * 8;
+						ctx.lineWidth = 3;
+						drawLEDPolygon(ctx, cx, cy, r, 3, `hsla(${i*24}, 100%, 60%, 0.8)`, 0.8);
+					}
+					break;
+				}
+				case 15: { // 16. NEON RING EMITTERS
+					for (let i = 0; i < 8; i++) {
+						const y = drawY(i * (height / 8) + 15);
+						const cx = (t * 180 + i * 80) % width;
+						ctx.strokeStyle = "rgba(0, 255, 255, 0.7)"; ctx.lineWidth = 3;
+						ctx.beginPath(); ctx.ellipse(cx, y, 40, 15, 0, 0, Math.PI * 2); ctx.stroke();
+						drawLEDPixel(ctx, cx, y, 4, "#ffffff", 0.9);
+					}
+					break;
+				}
+				case 16: { // 17. FIBER OPTIC STRANDS
+					for (let i = 0; i < 18; i++) {
+						const y = drawY(i * (height / 18));
+						ctx.fillStyle = `hsla(${i * 20 + t*10}, 100%, 60%, 0.3)`;
+						ctx.fillRect(0, y, width, 2);
+						const dotX = (t * (150 + i * 25)) % width;
+						ctx.fillStyle = "#ffffff"; ctx.fillRect(dotX, y - 2, 8, 6);
+					}
+					break;
+				}
+				case 17: { // 18. BINARY CLUSTERS
+					ctx.fillStyle = "#00ff88"; ctx.font = "bold 18px monospace";
+					for(let i=0; i<15; i++) {
+						const bx = (i * 90 + t * 60) % width;
+						const by = drawY((i * 41) % height);
+						ctx.globalAlpha = 0.8;
+						ctx.fillText(Math.random()>0.5?"1010":"0101", bx, by);
+						ctx.fillText(Math.random()>0.5?"1100":"0011", bx+15, by+18);
+					}
+					break;
+				}
+				case 18: { // 19. ENERGY RINGS
+					for (let i = 0; i < 6; i++) {
+						const cx = (t * 100 + i * 180) % width;
+						for (let r = 20; r <= 80; r += 20) {
+							ctx.strokeStyle = `rgba(255, ${100 + r}, 0, 0.6)`; ctx.lineWidth = 3;
+							ctx.beginPath(); ctx.arc(cx, drawY(height/2 + (i%2===0?30:-30)), r, 0, Math.PI*2); ctx.stroke();
+						}
+					}
+					break;
+				}
+				case 19: { // 20. WARP SPEED STARS
+					ctx.fillStyle = "#ffffff";
+					for(let i=0; i<100; i++) {
+						const speed = 200 + (i % 5) * 80;
+						const x = (t * speed + i * 17) % width;
+						const dir = i % 2 === 0 ? 1 : -1;
+						const drift = Math.pow(x / width, 2) * 60 * dir;
+						const y = drawY(height / 2 + drift + (i%5)*25*dir);
+						ctx.globalAlpha = 0.2 + (x / width) * 0.8;
+						ctx.fillRect(x, y, (i%5)*4 + 8, 2);
+					}
+					break;
+				}
 			}
 			
+			ctx.restore();
 			texture.needsUpdate = true;
 		});
-
-		// GLOBÁLIS LED SEGÉDFÜGGVÉNYEK (OPTIMALIZÁLVA: 10x kevesebb beginPath() hívás a vajsima 60 FPS-ért)
+		// SEGÉDFÜGGVÉNYEK
 		function drawLEDDot(ctx, x, y, r, color, alpha = 1.0) {
-			if (alpha <= 0.05) return;
-			ctx.globalAlpha = alpha;
-			ctx.fillStyle = color;
-			ctx.beginPath();
-			ctx.arc(x, y, r, 0, Math.PI * 2);
-			ctx.fill();
-			ctx.globalAlpha = 1.0;
-		}
-
-		function drawLEDRing(ctx, x, height, color, alpha = 1.0) {
-			if (alpha <= 0.05) return;
-			const ledSpacing = 12;
-			const dotRadius = 2.5;
-			ctx.globalAlpha = alpha;
-			ctx.fillStyle = color;
-			ctx.beginPath();
-			for (let y = 0; y < height; y += ledSpacing) {
-				ctx.moveTo(x + dotRadius, y);
-				ctx.arc(x, y, dotRadius, 0, Math.PI * 2);
-			}
-			ctx.fill();
-			ctx.globalAlpha = 1.0;
-		}
-
-		function drawLEDRingSegment(ctx, x, yStart, yEnd, color, alpha = 1.0) {
-			if (alpha <= 0.05) return;
-			const ledSpacing = 12;
-			const dotRadius = 2.5;
-			ctx.globalAlpha = alpha;
-			ctx.fillStyle = color;
-			ctx.beginPath();
-			for (let y = yStart; y <= yEnd; y += ledSpacing) {
-				ctx.moveTo(x + dotRadius, y);
-				ctx.arc(x, y, dotRadius, 0, Math.PI * 2);
-			}
-			ctx.fill();
-			ctx.globalAlpha = 1.0;
-		}
-
-		function drawLEDLine(ctx, y, width, color, alpha = 1.0) {
-			if (alpha <= 0.05) return;
-			const ledSpacing = 12;
-			const dotRadius = 2.0;
-			ctx.globalAlpha = alpha;
-			ctx.fillStyle = color;
-			ctx.beginPath();
-			for (let x = 0; x < width; x += ledSpacing) {
-				ctx.moveTo(x + dotRadius, y);
-				ctx.arc(x, y, dotRadius, 0, Math.PI * 2);
-			}
-			ctx.fill();
-			ctx.globalAlpha = 1.0;
-		}
-
-		function drawLEDStar(ctx, cx, cy, maxRadius, color, alpha = 1.0) {
-			if (alpha <= 0.05) return;
-			const dotRadius = 2.0;
-			const step = 8;
-			ctx.globalAlpha = alpha;
-			for (let r = 0; r <= maxRadius; r += step) {
-				drawLEDDot(ctx, cx + r, cy, dotRadius, color, alpha);
-				drawLEDDot(ctx, cx - r, cy, dotRadius, color, alpha);
-				drawLEDDot(ctx, cx, cy + r, dotRadius, color, alpha);
-				drawLEDDot(ctx, cx, cy - r, dotRadius, color, alpha);
-				if (r > 0) {
-					const diag = Math.round(r * 0.6);
-					drawLEDDot(ctx, cx + diag, cy + diag, dotRadius, color, alpha);
-					drawLEDDot(ctx, cx - diag, cy + diag, dotRadius, color, alpha);
-					drawLEDDot(ctx, cx + diag, cy - diag, dotRadius, color, alpha);
-					drawLEDDot(ctx, cx - diag, cy - diag, dotRadius, color, alpha);
-				}
-			}
+			ctx.globalAlpha = alpha; ctx.fillStyle = color;
+			ctx.beginPath(); ctx.arc(x, y, r, 0, Math.PI * 2); ctx.fill();
 			ctx.globalAlpha = 1.0;
 		}
 
 		function drawLEDPolygon(ctx, cx, cy, radius, sides, color, alpha = 1.0) {
-			if (alpha <= 0.05) return;
-			const dotRadius = 2.0;
-			const points = [];
-			ctx.globalAlpha = alpha;
+			ctx.globalAlpha = alpha; ctx.strokeStyle = color; ctx.beginPath();
 			for (let i = 0; i < sides; i++) {
-				const angle = (i / sides) * Math.PI * 2 - Math.PI / 2;
-				points.push({ x: cx + Math.cos(angle) * radius, y: cy + Math.sin(angle) * radius });
+				const a = (i / sides) * Math.PI * 2 - Math.PI/2;
+				const x = cx + Math.cos(a) * radius;
+				const y = cy + Math.sin(a) * radius;
+				if (i === 0) ctx.moveTo(x, y); else ctx.lineTo(x, y);
 			}
-			for (let i = 0; i < sides; i++) {
-				const p1 = points[i];
-				const p2 = points[(i + 1) % sides];
-				const dist = Math.sqrt((p2.x - p1.x) ** 2 + (p2.y - p1.y) ** 2);
-				const steps = Math.ceil(dist / 8);
-				for (let s = 0; s <= steps; s++) {
-					const t_poly = s / steps;
-					drawLEDDot(ctx, p1.x * (1 - t_poly) + p2.x * t_poly, p1.y * (1 - t_poly) + p2.y * t_poly, dotRadius, color, alpha);
-				}
-			}
-			ctx.globalAlpha = 1.0;
-		}
-
-		function drawLEDRingFilling(ctx, x, height, color, fillProgress, alpha = 1.0) {
-			if (alpha <= 0.05 || fillProgress <= 0.01) return;
-			const ledSpacing = 12;
-			const dotRadius = 2.5;
-			ctx.globalAlpha = alpha;
-			ctx.fillStyle = color;
-			ctx.beginPath();
-			const limitY = height * Math.min(1.0, Math.max(0.0, fillProgress));
-			for (let y = 0; y < limitY; y += ledSpacing) {
-				ctx.moveTo(x + dotRadius, y);
-				ctx.arc(x, y, dotRadius, 0, Math.PI * 2);
-			}
-			ctx.fill();
-			ctx.globalAlpha = 1.0;
-		}
-
-		function drawLEDRingChaser(ctx, x, height, color, phase) {
-			const ledSpacing = 12;
-			const dotRadius = 2.5;
-			for (let y = 0; y < height; y += ledSpacing) {
-				const pulse = Math.sin(y * 0.05 - phase);
-				drawLEDDot(ctx, x, y, dotRadius, color, pulse > 0.6 ? 0.90 : 0.15);
-			}
-		}
-
-		function drawLEDRingCascade(ctx, x, height, color, phase) {
-			const ledSpacing = 12;
-			const dotRadius = 2.5;
-			for (let y = 0; y < height; y += ledSpacing) {
-				drawLEDDot(ctx, x, y, dotRadius, color, 0.5 + Math.sin((y / height) * Math.PI * 2.0 - phase) * 0.5);
-			}
+			ctx.closePath(); ctx.stroke(); ctx.globalAlpha = 1.0;
 		}
 		customTextureMaterials.forEach(mat => {
 			// Ha mindig világít, az intenzitás 1.0 (eredeti kép). 
