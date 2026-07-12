@@ -35,63 +35,75 @@
         Mód: Sorrendi
     </button>
 	<div id="ui-panel">
+		<!-- Nyelvválasztó gombok -->
+		<div style="text-align: right; margin-bottom: 10px;">
+			<button onclick="setLang('hu')" style="background: #cc0000; color: white; border: none; padding: 2px 8px; cursor: pointer; border-radius: 3px;">HU</button>
+			<button onclick="setLang('en')" style="background: #0000cc; color: white; border: none; padding: 2px 8px; cursor: pointer; border-radius: 3px;">EN</button>
+		</div>
+
         <div class="param-group">
-            <label>Csúszda átmérő (m)</label>
+            <label data-tr="slideDiameter">Csúszda átmérő (m)</label>
             <input type="number" id="slideDiameter" step="0.1" value="2.0">
-            <label>Lejtés meredeksége</label>
+            
+            <label data-tr="globalSlope">Lejtés meredeksége</label>
             <input type="number" id="globalSlope" step="0.01" value="0.055">
-            <label>Kifutó színe</label>
+            
+            <label data-tr="runoutColor">Kifutó színe</label>
             <input type="color" id="runoutColor" value="#0088ff" onchange="rebuildSlide()">
-			<label>Idő mód</label>
+			
+            <label data-tr="timeMode">Idő mód</label>
             <select id="timeMode" onchange="toggleTimeInput(); rebuildSlide();">
-                <option value="real">Valós idő (PC óra)</option>
-                <option value="fixed">Fix időpont</option>
+                <option value="real" data-tr="realTime">Valós idő (PC óra)</option>
+                <option value="fixed" data-tr="fixedTime">Fix időpont</option>
             </select>
+            
             <div id="fixedTimeContainer" style="display:none; gap:5px; margin-top:5px;">
                 <input type="number" id="fixedHour" min="0" max="23" value="12" style="width:45%;" onchange="rebuildSlide()"> :
                 <input type="number" id="fixedMinute" min="0" max="59" value="0" style="width:45%;" onchange="rebuildSlide()">
             </div>
-			<label style="margin-top: 10px; color: #ff7700;">Kiválasztott pálya (Többpályás esetén)</label>
+			
+            <label style="margin-top: 10px; color: #ff7700;" data-tr="selectedLane">Kiválasztott pálya (Többpályás esetén)</label>
             <input type="number" id="selectedLane" min="1" max="6" value="1" onchange="rebuildSlide()">
-			<label style="display:inline-flex; align-items:center; cursor:pointer; color:#aaa; margin-top: 10px; font-size:12px;">
+			
+            <label style="display:inline-flex; align-items:center; cursor:pointer; color:#aaa; margin-top: 10px; font-size:12px;">
                 <input type="checkbox" id="allowLightBleed" checked onchange="toggleLightBleed(this.checked)" style="width:auto; margin-right:8px; margin-bottom:0; cursor:pointer;">
-                Fényáteresztő csúszdafal (beszűrődő fény)
+                <span data-tr="lightBleed">Fényáteresztő csúszdafal (beszűrődő fény)</span>
             </label>
         </div>
+        
 		<div class="param-group" style="border-top: 1px solid #444; padding-top: 10px; margin-top: 10px;">
-    		<label>Statisztika:</label>
+    		<label data-tr="stats">Statisztika:</label>
     		<div style="font-size: 14px; color: #ffcc00;">
-       		Hossz: <span id="lengthVal">0</span> m<br>
-        	Magasság: <span id="heightVal">0</span> m
-    	</div>
-</div>
+       		<span data-tr="length">Hossz:</span> <span id="lengthVal">0</span> m<br>
+        	<span data-tr="heightDrop">Magasság:</span> <span id="heightVal">0</span> m
+    	    </div>
+        </div>
+        
         <div id="segments-container"></div>
-			<button class="add-btn" onclick="addSegmentUI()">+ Új szakasz hozzáadása</button>
-			<button class="add-btn" style="background:#ff7700; margin-top:15px;" onclick="rebuildSlide()">FRISSÍTÉS / ÉPÍTÉS</button>
-			<button class="add-btn" style="background:#17a2b8; margin-top:15px;" onclick="saveTrack()">Mentés (JSON)</button>
-			<button class="add-btn" style="background:#6c757d; margin-top:5px;" onclick="document.getElementById('fileInput').click()">Betöltés</button>
-			<button class="add-btn" style="background:#007bff; margin-top:5px;" onclick="randomBodySlideGenerator()">
-				RANDOM TESTCSÚSZDA (100m)
-			</button>
-			<button class="add-btn" style="background:#9900ff; margin-top:5px;" onclick="randomStarGateGenerator()">
-				RANDOM GUMIS CSÚSZDA (60m)
-			</button>
-			<input type="file" id="fileInput" style="display:none" accept=".json" onchange="loadTrack(event)">
-			<button class="add-btn" id="viewBtn" style="background:#444; margin-top:5px;">Nézet: Belső</button>
-			<label>Sebesség (m/s)</label>
-			<input type="number" id="moveSpeed" step="0.5" value="2.0">
-			<label style="color:#00ff88; font-weight:bold;">ALGORITMIKUS HOSSZABBÍTÁS</label>
-			<div style="display:flex; gap:5px; margin-bottom:5px;">
-				<select id="extendPosition" style="flex:1; background:#222; color:#fff; border:1px solid #555;">
-					<option value="end">Pálya végére</option>
-					<option value="start">Pálya elejére</option>
-				</select>
-				<input type="number" id="extendCount" value="3" min="1" max="10" style="width:50px; text-align:center; background:#222; color:#fff; border:1px solid #555;">
-			</div>
-			<button class="add-btn" style="background:#00ff88; color:#000; font-weight:bold; margin-top:5px;" onclick="algorithmicExtend()">
-				KITERJESZTÉS GENERÁLÁSA
-			</button>
+        
+		<button class="add-btn" onclick="addSegmentUI()" data-tr="addSegment">+ Új szakasz hozzáadása</button>
+		<button class="add-btn" style="background:#ff7700; margin-top:15px;" onclick="rebuildSlide()" data-tr="rebuild">FRISSÍTÉS / ÉPÍTÉS</button>
+		<button class="add-btn" style="background:#17a2b8; margin-top:15px;" onclick="saveTrack()" data-tr="saveJson">Mentés (JSON)</button>
+		<button class="add-btn" style="background:#6c757d; margin-top:5px;" onclick="document.getElementById('fileInput').click()" data-tr="loadJson">Betöltés</button>
+		<button class="add-btn" style="background:#007bff; margin-top:5px;" onclick="randomBodySlideGenerator()" data-tr="randBody">RANDOM TESTCSÚSZDA (100m)</button>
+		<button class="add-btn" style="background:#9900ff; margin-top:5px;" onclick="randomStarGateGenerator()" data-tr="randTube">RANDOM GUMIS CSÚSZDA (60m)</button>
+		<input type="file" id="fileInput" style="display:none" accept=".json" onchange="loadTrack(event)">
+		
+		<button class="add-btn" id="viewBtn" style="background:#444; margin-top:5px;" data-tr="viewBtn">Nézet: Belső</button>
+		
+		<label data-tr="speed">Sebesség (m/s)</label>
+		<input type="number" id="moveSpeed" step="0.5" value="2.0">
+		
+		<label style="color:#00ff88; font-weight:bold;" data-tr="algTitle">ALGORITMIKUS HOSSZABBÍTÁS</label>
+		<div style="display:flex; gap:5px; margin-bottom:5px;">
+			<select id="extendPosition" style="flex:1; background:#222; color:#fff; border:1px solid #555;">
+				<option value="end" data-tr="toEnd">Pálya végére</option>
+				<option value="start" data-tr="toStart">Pálya elejére</option>
+			</select>
+			<input type="number" id="extendCount" value="3" min="1" max="10" style="width:50px; text-align:center; background:#222; color:#fff; border:1px solid #555;">
 		</div>
+		<button class="add-btn" style="background:#00ff88; color:#000; font-weight:bold; margin-top:5px;" onclick="algorithmicExtend()" data-tr="genExt">KITERJESZTÉS GENERÁLÁSA</button>
+	</div>
 <script type="importmap">
     {
         "imports": {
@@ -101,6 +113,117 @@
     }
 </script>
 <script type="module">
+	window.currentLang = 'hu';
+	
+	const T = {
+		hu: {
+			slideDiameter: "Csúszda átmérő (m)", globalSlope: "Lejtés meredeksége", runoutColor: "Kifutó színe",
+			timeMode: "Idő mód", realTime: "Valós idő (PC óra)", fixedTime: "Fix időpont", selectedLane: "Kiválasztott pálya (Többpályás esetén)",
+			lightBleed: "Fényáteresztő csúszdafal (beszűrődő fény)", stats: "Statisztika:", length: "Hossz:", heightDrop: "Magasság:",
+			addSegment: "+ Új szakasz hozzáadása", rebuild: "FRISSÍTÉS / ÉPÍTÉS", saveJson: "Mentés (JSON)", loadJson: "Betöltés",
+			randBody: "RANDOM TESTCSÚSZDA (100m)", randTube: "RANDOM GUMIS CSÚSZDA (60m)", speed: "Sebesség (m/s)",
+			algTitle: "ALGORITMIKUS HOSSZABBÍTÁS", toEnd: "Pálya végére", toStart: "Pálya elejére", genExt: "KITERJESZTÉS GENERÁLÁSA",
+			
+			// Gombok és Értesítések
+			viewInside: "Nézet: Belső", viewOutside: "Nézet: Külső",
+			camPause: "Kamera Megállítása", camResume: "Kamera Folytatása",
+			modeSeq: "Mód: Sorrendi", modeRand: "Mód: Véletlen",
+			errNoSeg: "A tanuláshoz szükség van legalább egy meglévő szakaszra!",
+			errInvalidFormat: "Érvénytelen fájlformátum!",
+			errLoad: "Hiba a betöltéskor!",
+			
+			// Render UI (Dinamikus elemek)
+			emptySlide: "A csúszda jelenleg üres.<br><br><span style='color:#0088ff;'>Kattints a <b>+ Új szakasz hozzáadása</b> gombra az építés megkezdéséhez!</span>",
+			type: "Típus", straight: "Egyenes", turn: "Kanyar",
+			cross: "Keresztmetszet", c_circle: "Kör", c_open: "Nyitott (3/4, fény nélkül)", c_oval: "Ovális / Szem", c_half: "Félkör (Lapos alj)", c_multi: "Többpályás (Nyitott)", c_lazy: "Lusta folyó (Folyamatban...)",
+			lanesCount: "Pályák száma (2-6)", diamWidth: "Átmérő/Szélesség", slope: "Lejtés (Meredekség)", outColor: "Külső szín", inColor: "Belső szín",
+			lightType: "Világítás típusa",
+			l_rings: "LED Gyűrűk + Narancs", l_stars: "Csillagos égbolt", l_stars2: "Csillagos ég v2", l_dots: "Fehér pöttyök", l_floor: "Padlófény (Futó)",
+			l_jump: "Fénysorompó + Hang", l_strips: "Hosszanti LED csíkok", l_tris: "Középső 3D Háromszögek", l_water: "Vízfüggöny vetítéssel",
+			l_tcirc: "Kanyar: Körök", l_tdrop: "Kanyar: Vízcseppek", l_zig: "Tető: Cikkcakk vonal", l_disp: "Kerek LED kijelzők",
+			l_drings: "Daylight: Fénygyűrűk", l_dhalf: "Daylight: Fél fénygyűrűk", l_dstars: "Daylight: Nagy csillagok", l_ddots: "Daylight: Nagy pöttyök", l_dtop: "Daylight: Mennyezeti pöttyök",
+			l_ftun: "Futurisztikus Alagút (Full LED cső)", l_cust: "Egyéni textúra", l_text: "Világító felirat (szöveg)", l_tunrings: "RGB LED Gyűrűk", l_srings: "Csillagos gyűrűk", l_dark: "Sötét",
+			
+			// Extrák
+			topDotsLanes: "Mennyezeti pöttyök", lanesNum: "Sávok száma (1-5)",
+			dispSettings: "LED Kijelző Beállítások", pattern: "Minta", p_all: "Mindegyik vegyesen", p_smile: "Smiley", p_coil: "Spirál", p_star: "Csillag",
+			layout: "Elrendezés", l_class: "Klasszikus", l_fbl: "Egy elöl jobb, egy hátul bal", l_bfl: "Egy hátul jobb, egy elöl bal", l_ceil: "Egy a mennyezeten", l_scat: "Szabályos mintában szétszórva",
+			dispDiam: "Kijelző átmérő (m)", longDist: "Hosszanti távolság (m)", angLanes: "Sávok száma", ledColor: "LED színe", c_red: "Vörös", c_green: "Zöld", c_blue: "Kék", c_yel: "Sárga", c_mix: "Vegyes színek",
+			textSettings: "Felirat Beállítások", textStr: "Felirat szövege",
+			starScaleSettings: "Csillagos ég v2 Beállítások", scaleSize: "Lépték / Méretarány",
+			uploadCustom: "Saját világító textúra feltöltése:", imgLoaded: "✓ Kép betöltve", noImg: "Nincs kép", alwaysGlow: "Sötétben is világítson",
+			waterSettings: "Saját kép a vízfüggönyre:", defBrick: "Alapértelmezett tégla minta",
+			lenM: "Hossz (m)", radM: "Sugár (m)", angDeg: "Szög (°)", turnDir: "Kanyar irány", left: "Bal", right: "Jobb"
+		},
+		en: {
+			slideDiameter: "Slide diameter (m)", globalSlope: "Global slope", runoutColor: "Runout color",
+			timeMode: "Time mode", realTime: "Real time (PC clock)", fixedTime: "Fixed time", selectedLane: "Selected lane (Multi-lane)",
+			lightBleed: "Translucent wall (light bleed)", stats: "Statistics:", length: "Length:", heightDrop: "Height drop:",
+			addSegment: "+ Add new segment", rebuild: "UPDATE / BUILD", saveJson: "Save (JSON)", loadJson: "Load",
+			randBody: "RANDOM BODY SLIDE (100m)", randTube: "RANDOM TUBE SLIDE (60m)", speed: "Speed (m/s)",
+			algTitle: "ALGORITHMIC EXTENSION", toEnd: "To the end", toStart: "To the start", genExt: "GENERATE EXTENSION",
+			
+			viewInside: "View: Inside", viewOutside: "View: Outside",
+			camPause: "Pause Camera", camResume: "Resume Camera",
+			modeSeq: "Mode: Sequential", modeRand: "Mode: Random",
+			errNoSeg: "At least one segment is required for algorithmic learning!",
+			errInvalidFormat: "Invalid file format!",
+			errLoad: "Error loading file!",
+			
+			emptySlide: "The slide is currently empty.<br><br><span style='color:#0088ff;'>Click <b>+ Add new segment</b> to begin building!</span>",
+			type: "Type", straight: "Straight", turn: "Turn",
+			cross: "Cross section", c_circle: "Circle", c_open: "Open (3/4, no light)", c_oval: "Oval / Eye", c_half: "Half-pipe (Flat bottom)", c_multi: "Multi-lane (Open)", c_lazy: "Lazy river (Work In Progress)",
+			lanesCount: "Number of lanes (2-6)", diamWidth: "Diameter/Width", slope: "Slope (Drop)", outColor: "Outer color", inColor: "Inner color",
+			lightType: "Lighting type",
+			l_rings: "LED Rings + Orange", l_stars: "Starry sky", l_stars2: "Starry sky v2", l_dots: "White dots", l_floor: "Floor light (Chase)",
+			l_jump: "Light barrier + Sound", l_strips: "Longitudinal LED strips", l_tris: "Center 3D Triangles", l_water: "Water curtain projection",
+			l_tcirc: "Turn: Circles", l_tdrop: "Turn: Droplets", l_zig: "Ceiling: Zigzag line", l_disp: "Round LED displays",
+			l_drings: "Daylight: Rings", l_dhalf: "Daylight: Half rings", l_dstars: "Daylight: Big stars", l_ddots: "Daylight: Big dots", l_dtop: "Daylight: Ceiling dots",
+			l_ftun: "Futuristic Tunnel (Full LED)", l_cust: "Custom texture", l_text: "Glowing Text", l_tunrings: "RGB LED Rings", l_srings: "Star rings", l_dark: "Dark",
+			
+			topDotsLanes: "Ceiling dots", lanesNum: "Number of lanes (1-5)",
+			dispSettings: "LED Display Settings", pattern: "Pattern", p_all: "Mixed patterns", p_smile: "Smiley", p_coil: "Coil / Spiral", p_star: "Star",
+			layout: "Layout", l_class: "Classic", l_fbl: "Front right, Back left", l_bfl: "Back right, Front left", l_ceil: "One on ceiling", l_scat: "Scattered pattern",
+			dispDiam: "Display diameter (m)", longDist: "Longitudinal distance (m)", angLanes: "Number of lanes", ledColor: "LED Color", c_red: "Red", c_green: "Green", c_blue: "Blue", c_yel: "Yellow", c_mix: "Mixed colors",
+			textSettings: "Text Settings", textStr: "Text content",
+			starScaleSettings: "Starry Sky v2 Settings", scaleSize: "Scale / Size ratio",
+			uploadCustom: "Upload custom glowing texture:", imgLoaded: "✓ Image loaded", noImg: "No image", alwaysGlow: "Always glow in dark",
+			waterSettings: "Custom image for water curtain:", defBrick: "Default brick pattern",
+			lenM: "Length (m)", radM: "Radius (m)", angDeg: "Angle (°)", turnDir: "Turn direction", left: "Left", right: "Right"
+		}
+	};
+	
+	window.tr = function(key) {
+		return T[window.currentLang][key] || key;
+	};
+
+	window.setLang = function(lang) {
+		window.currentLang = lang;
+		
+		// Fix panelek szövegeinek frissítése
+		document.querySelectorAll('[data-tr]').forEach(el => {
+			const key = el.getAttribute('data-tr');
+			if (el.tagName === 'INPUT' && el.type === 'button') {
+				el.value = tr(key);
+			} else {
+				el.innerHTML = tr(key);
+			}
+		});
+		
+		// Gombok frissítése
+		const viewBtn = document.getElementById('viewBtn');
+		if(viewBtn) viewBtn.innerText = isExternal ? tr('viewOutside') : tr('viewInside');
+		
+		const pauseBtn = document.getElementById('pauseBtn');
+		if(pauseBtn) pauseBtn.innerText = isPaused ? tr('camResume') : tr('camPause');
+		
+		const modeBtn = document.getElementById('modeBtn');
+		if(modeBtn) modeBtn.innerText = isRandomOrder ? tr('modeRand') : tr('modeSeq');
+
+		// A dinamikus szakaszok újrarajzolása
+		renderUI();
+	};
+
 	window.toggleTimeInput = function() {
 		const mode = document.getElementById('timeMode').value;
 		document.getElementById('fixedTimeContainer').style.display = mode === 'fixed' ? 'flex' : 'none';
@@ -114,7 +237,7 @@
 
 	window.algorithmicExtend = function() {
 		if (!PARAMS.segments || PARAMS.segments.length === 0) {
-			alert("A tanuláshoz szükség van legalább egy meglévő szakaszra!");
+			alert(tr('errNoSeg'));
 			return;
 		}
 
@@ -638,12 +761,14 @@
             if (dist <= cur + slen + 0.0001 || i === PARAMS.segments.length - 1) {
                 let prev = i > 0 ? PARAMS.segments[i-1] : seg;
                 let t = slen <= 0 ? 0 : Math.max(0, Math.min(1, (dist - cur) / slen));
-                
-                // --- ÚJ: Megvizsgáljuk, hogy ez egy "Többpályás <-> Egypályás" találkozás-e ---
-                let isMultiTrans = (prev.shape === 'multi' && seg.shape !== 'multi') || (prev.shape !== 'multi' && seg.shape === 'multi');
-                
+				
                 // Ha többpályásra/ról váltunk, azonnal "100%"-ra ugrik az átmenet, azaz nincs lágy morfolódás.
-                let finalT = isMultiTrans ? 1 : t;
+                let isMultiTrans = (prev.shape === 'multi' && seg.shape !== 'multi') || (prev.shape !== 'multi' && seg.shape === 'multi');
+                let isLazyTrans = (prev.shape === 'lazy' && seg.shape !== 'lazy') || (prev.shape !== 'lazy' && seg.shape === 'lazy');
+                
+                // Ha többpályásra/ról vagy lusta folyóra/ról váltunk, azonnal "100%"-ra ugrik az átmenet.
+                let finalT = (isMultiTrans || isLazyTrans) ? 1 : t;
+				
                 let shape1 = isMultiTrans ? seg.shape : (prev.shape || 'circle');
                 let lanes1 = isMultiTrans ? seg.lanes : (prev.lanes || 1);
 
@@ -719,6 +844,27 @@
 
 			// A végső magasság egyből alkalmazva a teljes formára
 			y = baseFlatY + (wallFactor * targetHeight) - dip;
+		} else if (shape === 'lazy') {
+			let a = angle % (Math.PI * 2);
+			if (a > Math.PI) a -= Math.PI * 2; // Normalizálás -PI és PI közé
+
+			if (a >= 0 && a <= Math.PI) {
+				// Felső rész: Átlátszó kupola (Félkör)
+				x = Math.cos(a) * r;
+				y = Math.sin(a) * r;
+			} else {
+				// Alsó rész: Szögletes csempés medence
+				const depth = r + 0.9; // A cső alja (r) alatt még 90 cm-re van az aljzat
+				const dirX = Math.cos(a);
+				const dirY = Math.sin(a);
+
+				let t1 = -depth / dirY; // Metszéspont az aljzattal
+				let t2 = r / Math.abs(dirX); // Metszéspont a függőleges falakkal
+				let t_min = Math.min(t1, t2);
+
+				x = t_min * dirX;
+				y = t_min * dirY;
+			}
 		}
 		return { x, y };
 	}
@@ -756,6 +902,7 @@
     let allRings = [];
     let starPoints = [];
 	let star2Points = [];
+	let starRingLeds = [];
     let stripLeds = [];
 	let floorLights = [];
 	let centerTriangles = []; 
@@ -764,6 +911,8 @@
 	let allDisplays = []; 
 	const ledPixelGeo = new THREE.CircleGeometry(0.006, 4); 
 	let imageDisplays = []; 
+	let sharedLedMaterials = {}; // Textúra cache
+	let activeSharedLeds = [];   // Az animáció ehhez fog nyúlni
 	const displayGeoBase = new THREE.CircleGeometry(0.335, 32);
 	let jumpscares = []; 
 	let flashIntensity = 0; 
@@ -963,13 +1112,11 @@
 		const container = document.getElementById('segments-container');
 		container.innerHTML = '';
 		
-		// --- ÚJ: Üres állapot kezelése ---
 		if (!PARAMS.segments || PARAMS.segments.length === 0) {
 			container.innerHTML = `<div style="text-align: center; padding: 25px 10px; color: #888; font-style: italic; background: #1a1a1a; border-radius: 5px; margin-bottom: 10px; border: 1px dashed #444;">
-				A csúszda jelenleg üres.<br><br>
-				<span style="color:#0088ff;">Kattints a <b>+ Új szakasz hozzáadása</b> gombra az építés megkezdéséhez!</span>
+				${tr('emptySlide')}
 			</div>`;
-			return; // Ne próbáljunk meg listázni semmit
+			return; 
 		}
 		
 		PARAMS.segments.forEach((seg, i) => {
@@ -977,116 +1124,117 @@
 			div.className = 'segment-card';
 			div.innerHTML = `
 				<button class="rem-btn" onclick="removeSegment(${i})">X</button>
-				<label>Típus</label>
+				<label>${tr('type')}</label>
 				<select onchange="updateSeg(${i}, 'type', this.value)">
-					<option value="straight" ${seg.type === 'straight' ? 'selected' : ''}>Egyenes</option>
-					<option value="turn" ${seg.type === 'turn' ? 'selected' : ''}>Kanyar</option>
+					<option value="straight" ${seg.type === 'straight' ? 'selected' : ''}>${tr('straight')}</option>
+					<option value="turn" ${seg.type === 'turn' ? 'selected' : ''}>${tr('turn')}</option>
 				</select>
 				
-				<label>Keresztmetszet</label>
+				<label>${tr('cross')}</label>
 				<select onchange="updateSeg(${i}, 'shape', this.value)">
-					<option value="circle" ${seg.shape === 'circle' ? 'selected' : ''}>Kör</option>
-					<option value="open" ${seg.shape === 'open' ? 'selected' : ''}>Nyitott (3/4, fény nélkül)</option>
-					<option value="oval" ${seg.shape === 'oval' ? 'selected' : ''}>Ovális / Szem</option>
-					<option value="half" ${seg.shape === 'half' ? 'selected' : ''}>Félkör (Lapos alj)</option>
-					<option value="multi" ${seg.shape === 'multi' ? 'selected' : ''}>Többpályás (Nyitott)</option>
+					<option value="circle" ${seg.shape === 'circle' ? 'selected' : ''}>${tr('c_circle')}</option>
+					<option value="open" ${seg.shape === 'open' ? 'selected' : ''}>${tr('c_open')}</option>
+					<option value="oval" ${seg.shape === 'oval' ? 'selected' : ''}>${tr('c_oval')}</option>
+					<option value="half" ${seg.shape === 'half' ? 'selected' : ''}>${tr('c_half')}</option>
+					<option value="multi" ${seg.shape === 'multi' ? 'selected' : ''}>${tr('c_multi')}</option>
+					<option value="lazy" ${seg.shape === 'lazy' ? 'selected' : ''}>${tr('c_lazy')}</option>
 				</select>
 
                 ${seg.shape === 'multi' ? `
 					<div style="margin-top:5px; margin-bottom: 5px; background:#222; padding:5px; border-radius:4px; border:1px solid #555;">
-						<label style="color:#0088ff;">Pályák száma (2-6)</label>
+						<label style="color:#0088ff;">${tr('lanesCount')}</label>
 						<input type="number" min="2" max="6" value="${seg.lanes || 3}" onchange="updateSeg(${i}, 'lanes', parseInt(this.value))">
 					</div>
 				` : ''}
 
                 <div style="display:flex; gap:5px;">
                     <div style="flex:1;">
-                        <label>Átmérő/Szélesség</label>
+                        <label>${tr('diamWidth')}</label>
                         <input type="number" step="0.1" value="${seg.diameter || 2.0}" onchange="updateSeg(${i}, 'diameter', parseFloat(this.value))">
                     </div>
                     <div style="flex:1;">
-                        <label>Lejtés (Meredekség)</label>
+                        <label>${tr('slope')}</label>
                         <input type="number" step="0.01" value="${seg.slope || 0.06}" onchange="updateSeg(${i}, 'slope', parseFloat(this.value))">
                     </div>
 					<div style="flex:1;">
-                        <label>Külső szín</label>
+                        <label>${tr('outColor')}</label>
                         <input type="color" value="${seg.color || '#ffcc00'}" onchange="updateSeg(${i}, 'color', this.value)">
                     </div>
                     <div style="flex:1;">
-                        <label>Belső szín</label>
+                        <label>${tr('inColor')}</label>
                         <input type="color" value="${seg.innerColor || '#000000'}" onchange="updateSeg(${i}, 'innerColor', this.value)">
                     </div>
                 </div>
 
-				<label>Világítás típusa</label>
+				<label>${tr('lightType')}</label>
 				<select onchange="updateSeg(${i}, 'light', this.value)">
-					<option value="rings" ${seg.light === 'rings' ? 'selected' : ''}>LED Gyűrűk + Narancs</option>
-					<option value="stars" ${seg.light === 'stars' ? 'selected' : ''}>Csillagos égbolt</option>
-					<option value="stars2" ${seg.light === 'stars2' ? 'selected' : ''}>Csillagos ég v2</option>
-					<option value="dots" ${seg.light === 'dots' ? 'selected' : ''}>Fehér pöttyök</option>
-					<option value="floor_run" ${seg.light === 'floor_run' ? 'selected' : ''}>Padlófény (Futó)</option>
-					<option value="jumpscare" ${seg.light === 'jumpscare' ? 'selected' : ''}>Fénysorompó + Hang</option>
-					<option value="strips" ${seg.light === 'strips' ? 'selected' : ''}>Hosszanti LED csíkok</option>
-					${seg.type === 'straight' ? `<option value="center_tris" ${seg.light === 'center_tris' ? 'selected' : ''}>Középső 3D Háromszögek</option>` : ''}
-					${seg.type === 'straight' ? `<option value="water_curtain" ${seg.light === 'water_curtain' ? 'selected' : ''}>Vízfüggöny vetítéssel</option>` : ''}
-					<option value="turn_circles" ${seg.light === 'turn_circles' ? 'selected' : ''}>Kanyar: Körök</option>
-					<option value="turn_droplets" ${seg.light === 'turn_droplets' ? 'selected' : ''}>Kanyar: Vízcseppek</option>
-					<option value="zigzag" ${seg.light === 'zigzag' ? 'selected' : ''}>Tető: Cikkcakk vonal</option>
-					<option value="led_displays" ${seg.light === 'led_displays' ? 'selected' : ''}>Kerek LED kijelzők</option>
-					<option value="daylight_rings" ${seg.light === 'daylight_rings' ? 'selected' : ''}>Daylight: Fénygyűrűk</option>
-					<option value="daylight_half_rings" ${seg.light === 'daylight_half_rings' ? 'selected' : ''}>Daylight: Fél fénygyűrűk</option>
-					<option value="daylight_stars" ${seg.light === 'daylight_stars' ? 'selected' : ''}>Daylight: Nagy csillagok</option>
-					<option value="daylight_dots" ${seg.light === 'daylight_dots' ? 'selected' : ''}>Daylight: Nagy pöttyök</option>
-					<option value="daylight_top_dots" ${seg.light === 'daylight_top_dots' ? 'selected' : ''}>Daylight: Mennyezeti pöttyök (15 cm)</option>
-					<option value="futuristic_tunnel" ${seg.light === 'futuristic_tunnel' ? 'selected' : ''}>Futurisztikus Alagút (Full LED cső)</option>
-					<option value="custom_texture" ${seg.light === 'custom_texture' ? 'selected' : ''}>Egyéni textúra</option>
-					${seg.type === 'straight' ? `<option value="text" ${seg.light === 'text' ? 'selected' : ''}>Világító felirat (szöveg)</option>` : ''}
-					<option value="tunnel_rings" ${seg.light === 'tunnel_rings' ? 'selected' : ''}>RGB LED Gyűrűk</option>
-					<option value="dark" ${seg.light === 'dark' ? 'selected' : ''}>Sötét</option>
+					<option value="rings" ${seg.light === 'rings' ? 'selected' : ''}>${tr('l_rings')}</option>
+					<option value="stars" ${seg.light === 'stars' ? 'selected' : ''}>${tr('l_stars')}</option>
+					<option value="stars2" ${seg.light === 'stars2' ? 'selected' : ''}>${tr('l_stars2')}</option>
+					<option value="dots" ${seg.light === 'dots' ? 'selected' : ''}>${tr('l_dots')}</option>
+					<option value="floor_run" ${seg.light === 'floor_run' ? 'selected' : ''}>${tr('l_floor')}</option>
+					<option value="jumpscare" ${seg.light === 'jumpscare' ? 'selected' : ''}>${tr('l_jump')}</option>
+					<option value="strips" ${seg.light === 'strips' ? 'selected' : ''}>${tr('l_strips')}</option>
+					${seg.type === 'straight' ? `<option value="center_tris" ${seg.light === 'center_tris' ? 'selected' : ''}>${tr('l_tris')}</option>` : ''}
+					${seg.type === 'straight' ? `<option value="water_curtain" ${seg.light === 'water_curtain' ? 'selected' : ''}>${tr('l_water')}</option>` : ''}
+					<option value="turn_circles" ${seg.light === 'turn_circles' ? 'selected' : ''}>${tr('l_tcirc')}</option>
+					<option value="turn_droplets" ${seg.light === 'turn_droplets' ? 'selected' : ''}>${tr('l_tdrop')}</option>
+					<option value="zigzag" ${seg.light === 'zigzag' ? 'selected' : ''}>${tr('l_zig')}</option>
+					<option value="led_displays" ${seg.light === 'led_displays' ? 'selected' : ''}>${tr('l_disp')}</option>
+					<option value="daylight_rings" ${seg.light === 'daylight_rings' ? 'selected' : ''}>${tr('l_drings')}</option>
+					<option value="daylight_half_rings" ${seg.light === 'daylight_half_rings' ? 'selected' : ''}>${tr('l_dhalf')}</option>
+					<option value="daylight_stars" ${seg.light === 'daylight_stars' ? 'selected' : ''}>${tr('l_dstars')}</option>
+					<option value="daylight_dots" ${seg.light === 'daylight_dots' ? 'selected' : ''}>${tr('l_ddots')}</option>
+					<option value="daylight_top_dots" ${seg.light === 'daylight_top_dots' ? 'selected' : ''}>${tr('l_dtop')}</option>
+					<option value="futuristic_tunnel" ${seg.light === 'futuristic_tunnel' ? 'selected' : ''}>${tr('l_ftun')}</option>
+					<option value="custom_texture" ${seg.light === 'custom_texture' ? 'selected' : ''}>${tr('l_cust')}</option>
+					${seg.type === 'straight' ? `<option value="text" ${seg.light === 'text' ? 'selected' : ''}>${tr('l_text')}</option>` : ''}
+					<option value="tunnel_rings" ${seg.light === 'tunnel_rings' ? 'selected' : ''}>${tr('l_tunrings')}</option>
+					${(seg.diameter >= 1.4) ? `<option value="star_rings" ${seg.light === 'star_rings' ? 'selected' : ''}>${tr('l_srings')}</option>` : ''}
+					<option value="dark" ${seg.light === 'dark' ? 'selected' : ''}>${tr('l_dark')}</option>
 				</select>
 				
 				${seg.light === 'daylight_top_dots' ? `
 					<div style="background:#222; padding:8px; margin-top:5px; border:1px solid #555; border-radius:4px;">
-						<label style="color:#0088ff; font-weight:bold;">Mennyezeti pöttyök</label>
-						<label>Sávok száma (1-5)</label>
+						<label style="color:#0088ff; font-weight:bold;">${tr('topDotsLanes')}</label>
+						<label>${tr('lanesNum')}</label>
 						<input type="number" min="1" max="5" value="${seg.topDotLanes !== undefined ? seg.topDotLanes : 1}" onchange="updateSeg(${i}, 'topDotLanes', parseInt(this.value)); rebuildSlide();">
 					</div>
 				` : ''}
 
-				
 				${seg.light === 'led_displays' ? `
 					<div style="background:#222; padding:8px; margin-top:5px; border:1px solid #555; border-radius:4px;">
-						<label style="color:#0088ff; font-weight:bold;">LED Kijelző Beállítások</label>
-						<label>Minta</label>
+						<label style="color:#0088ff; font-weight:bold;">${tr('dispSettings')}</label>
+						<label>${tr('pattern')}</label>
 						<select onchange="updateSeg(${i}, 'ledPattern', this.value)">
-							<option value="all" ${seg.ledPattern === 'all' || !seg.ledPattern ? 'selected' : ''}>Mindegyik vegyesen</option>
-							<option value="smiley" ${seg.ledPattern === 'smiley' ? 'selected' : ''}>Smiley</option>
-							<option value="coil" ${seg.ledPattern === 'coil' ? 'selected' : ''}>Spirál / Tekercs</option>
-							<option value="star" ${seg.ledPattern === 'star' ? 'selected' : ''}>Csillag</option>
+							<option value="all" ${seg.ledPattern === 'all' || !seg.ledPattern ? 'selected' : ''}>${tr('p_all')}</option>
+							<option value="smiley" ${seg.ledPattern === 'smiley' ? 'selected' : ''}>${tr('p_smile')}</option>
+							<option value="coil" ${seg.ledPattern === 'coil' ? 'selected' : ''}>${tr('p_coil')}</option>
+							<option value="star" ${seg.ledPattern === 'star' ? 'selected' : ''}>${tr('p_star')}</option>
 						</select>
-						<label>Elrendezés</label>
+						<label>${tr('layout')}</label>
 						<select onchange="updateSeg(${i}, 'ledLayout', this.value)">
-							<option value="classic" ${seg.ledLayout === 'classic' || !seg.ledLayout ? 'selected' : ''}>Klasszikus</option>
-							<option value="front_r_back_l" ${seg.ledLayout === 'front_r_back_l' ? 'selected' : ''}>Egy elöl jobb, egy hátul bal (eredeti átmérő)</option>
-							<option value="back_r_front_l" ${seg.ledLayout === 'back_r_front_l' ? 'selected' : ''}>Egy hátul jobb, egy elöl bal (eredeti átmérő)</option>
-							<option value="ceiling_double" ${seg.ledLayout === 'ceiling_double' ? 'selected' : ''}>Egy a mennyezeten (kétszeres átmérő)</option>
-							<option value="scattered_upper" ${seg.ledLayout === 'scattered_upper' ? 'selected' : ''}>Felső félén szabályos mintában szétszórva</option>
+							<option value="classic" ${seg.ledLayout === 'classic' || !seg.ledLayout ? 'selected' : ''}>${tr('l_class')}</option>
+							<option value="front_r_back_l" ${seg.ledLayout === 'front_r_back_l' ? 'selected' : ''}>${tr('l_fbl')}</option>
+							<option value="back_r_front_l" ${seg.ledLayout === 'back_r_front_l' ? 'selected' : ''}>${tr('l_bfl')}</option>
+							<option value="ceiling_double" ${seg.ledLayout === 'ceiling_double' ? 'selected' : ''}>${tr('l_ceil')}</option>
+							<option value="scattered_upper" ${seg.ledLayout === 'scattered_upper' ? 'selected' : ''}>${tr('l_scat')}</option>
 						</select>
 						${seg.ledLayout === 'scattered_upper' ? `
 							<div style="margin-top: 5px; border-top: 1px solid #444; padding-top: 5px;">
-								<label>Kijelző átmérő (m)</label>
+								<label>${tr('dispDiam')}</label>
 								<input type="number" step="0.05" value="${seg.ledSize !== undefined ? seg.ledSize : 0.3}" onchange="updateSeg(${i}, 'ledSize', parseFloat(this.value))">
-								<label>Hosszanti távolság (m)</label>
+								<label>${tr('longDist')}</label>
 								<input type="number" step="0.1" value="${seg.ledSpacingLong !== undefined ? seg.ledSpacingLong : 1.0}" onchange="updateSeg(${i}, 'ledSpacingLong', parseFloat(this.value))">
-								<label>Sávok száma (mennyezet ívén)</label>
+								<label>${tr('angLanes')}</label>
 								<input type="number" step="1" min="1" value="${seg.ledSpacingAng !== undefined ? seg.ledSpacingAng : 3}" onchange="updateSeg(${i}, 'ledSpacingAng', parseInt(this.value))">
-								<label>LED színe</label>
+								<label>${tr('ledColor')}</label>
 								<select onchange="updateSeg(${i}, 'ledColor', this.value)">
-									<option value="#ff0000" ${seg.ledColor === '#ff0000' || !seg.ledColor ? 'selected' : ''}>Vörös</option>
-									<option value="#00ff00" ${seg.ledColor === '#00ff00' ? 'selected' : ''}>Zöld</option>
-									<option value="#0000ff" ${seg.ledColor === '#0000ff' ? 'selected' : ''}>Kék</option>
-									<option value="#ffff00" ${seg.ledColor === '#ffff00' ? 'selected' : ''}>Sárga</option>
-									<option value="mixed" ${seg.ledColor === 'mixed' ? 'selected' : ''}>Vegyes színek</option>
+									<option value="#ff0000" ${seg.ledColor === '#ff0000' || !seg.ledColor ? 'selected' : ''}>${tr('c_red')}</option>
+									<option value="#00ff00" ${seg.ledColor === '#00ff00' ? 'selected' : ''}>${tr('c_green')}</option>
+									<option value="#0000ff" ${seg.ledColor === '#0000ff' ? 'selected' : ''}>${tr('c_blue')}</option>
+									<option value="#ffff00" ${seg.ledColor === '#ffff00' ? 'selected' : ''}>${tr('c_yel')}</option>
+									<option value="mixed" ${seg.ledColor === 'mixed' ? 'selected' : ''}>${tr('c_mix')}</option>
 								</select>
 							</div>
 						` : ''}
@@ -1095,41 +1243,49 @@
 				
 				${seg.light === 'text' && seg.type === 'straight' ? `
 					<div style="background:#222; padding:8px; margin-top:5px; border:1px solid #555; border-radius:4px;">
-						<label style="color:#0088ff; font-weight:bold;">Felirat Beállítások</label>
-						<label>Felirat szövege</label>
+						<label style="color:#0088ff; font-weight:bold;">${tr('textSettings')}</label>
+						<label>${tr('textStr')}</label>
 						<input type="text" value="${seg.textValue !== undefined ? seg.textValue : 'BLACK HOLE'}" onchange="updateSeg(${i}, 'textValue', this.value); rebuildSlide();">
 					</div>
 				` : ''}
 				
 				${seg.light === 'stars2' ? `
 					<div style="background:#222; padding:8px; margin-top:5px; border:1px solid #555; border-radius:4px;">
-						<label style="color:#0088ff; font-weight:bold;">Csillagos ég v2 Beállítások</label>
-						<label>Lépték / Méretarány (méret és sűrűség)</label>
+						<label style="color:#0088ff; font-weight:bold;">${tr('starScaleSettings')}</label>
+						<label>${tr('scaleSize')}</label>
 						<input type="number" step="0.1" min="0.1" max="5.0" value="${seg.starsScale !== undefined ? seg.starsScale : 1.0}" onchange="updateSeg(${i}, 'starsScale', parseFloat(this.value))">
 					</div>
 				` : ''}
 				
 				${seg.light === 'custom_texture' ? `
 					<div style="background:#222; padding:8px; margin-top:5px; border:1px solid #555; border-radius:4px;">
-						<label>Saját világító textúra feltöltése:</label>
+						<label>${tr('uploadCustom')}</label>
 						<input type="file" accept="image/*" onchange="uploadCustomTexture(${i}, this)" style="font-size:11px;">
-						${seg.customTextureBase64 ? '<span style="color:#28a745; font-size:12px;">✓ Kép betöltve</span>' : '<span style="color:#dc3545; font-size:12px;">Nincs kép</span>'}
+						${seg.customTextureBase64 ? `<span style="color:#28a745; font-size:12px;">${tr('imgLoaded')}</span>` : `<span style="color:#dc3545; font-size:12px;">${tr('noImg')}</span>`}
 						<br><br>
 						<label style="display:inline-flex; align-items:center; cursor:pointer; color:#fff;">
 							<input type="checkbox" style="width:auto; margin-right:5px;" ${seg.alwaysGlow ? 'checked' : ''} onchange="updateSeg(${i}, 'alwaysGlow', this.checked)">
-							Sötétben is világítson (nincs halványodás)
+							${tr('alwaysGlow')}
 						</label>
+					</div>
+				` : ''}
+				
+				${seg.light === 'water_curtain' ? `
+					<div style="background:#222; padding:8px; margin-top:5px; border:1px solid #555; border-radius:4px;">
+						<label style="color:#0088ff; font-weight:bold;">${tr('waterSettings')}</label>
+						<input type="file" accept="image/*" onchange="uploadCustomTexture(${i}, this)" style="font-size:11px;">
+						${seg.customTextureBase64 ? `<span style="color:#28a745; font-size:12px;">${tr('imgLoaded')}</span>` : `<span style="color:#aaa; font-size:12px;">${tr('defBrick')}</span>`}
 					</div>
 				` : ''}
 
 				${seg.type === 'straight' ? 
-					`<label>Hossz (m)</label><input type="number" value="${seg.len}" onchange="updateSeg(${i}, 'len', parseFloat(this.value))">` :
-					`<label>Sugár (m)</label><input type="number" value="${seg.radius}" onchange="updateSeg(${i}, 'radius', parseFloat(this.value))">
-					 <label>Szög (°)</label><input type="number" value="${seg.angle}" onchange="updateSeg(${i}, 'angle', parseFloat(this.value))">
-					 <label>Kanyar irány</label>
+					`<label>${tr('lenM')}</label><input type="number" value="${seg.len}" onchange="updateSeg(${i}, 'len', parseFloat(this.value))">` :
+					`<label>${tr('radM')}</label><input type="number" value="${seg.radius}" onchange="updateSeg(${i}, 'radius', parseFloat(this.value))">
+					 <label>${tr('angDeg')}</label><input type="number" value="${seg.angle}" onchange="updateSeg(${i}, 'angle', parseFloat(this.value))">
+					 <label>${tr('turnDir')}</label>
 					 <select onchange="updateSeg(${i}, 'dir', this.value)">
-						<option value="left" ${seg.dir === 'left' ? 'selected' : ''}>Bal</option>
-						<option value="right" ${seg.dir === 'right' ? 'selected' : ''}>Jobb</option>
+						<option value="left" ${seg.dir === 'left' ? 'selected' : ''}>${tr('left')}</option>
+						<option value="right" ${seg.dir === 'right' ? 'selected' : ''}>${tr('right')}</option>
 					 </select>`
 				}
 			`;
@@ -1139,7 +1295,11 @@
 
 	window.updateSeg = function(i, prop, val) {
         PARAMS.segments[i][prop] = val;
-        
+		
+		if (prop === 'diameter' && val < 1.4 && PARAMS.segments[i].light === 'star_rings') {
+			PARAMS.segments[i].light = 'rings';
+		}
+		
         if (prop === 'type' && val === 'space_bowl') {
             if (!PARAMS.segments[i].bowlDiameter) PARAMS.segments[i].bowlDiameter = 8.0;
             if (!PARAMS.segments[i].bowlStyle) PARAMS.segments[i].bowlStyle = 'open';
@@ -1378,7 +1538,11 @@
 		waterCurtains = [];
 		customTextureMaterials = []; 
 		tunnelDisplays = []; 
-		rgbRingLeds = []; 
+		rgbRingLeds = [];
+		sharedLedMaterials = {};
+		activeSharedLeds = [];
+		starPoints.length = 0; 
+		starRingLeds.length = 0;
 
 		// Fehér pöttyök csoportjának kezelése és hozzáadása a slideGroup-hoz
 		whiteDotsGroup.traverse(child => { if (child.geometry) child.geometry.dispose(); });
@@ -1435,10 +1599,10 @@
 					renderUI();
 					rebuildSlide();
 				} else {
-					alert("Érvénytelen fájlformátum!");
+					alert(tr('errInvalidFormat'));
 				}
 			} catch(err) {
-				alert("Hiba a betöltéskor!");
+				alert(tr('errLoad'));
 			}
 		};
 		reader.readAsText(file);
@@ -1607,7 +1771,7 @@
 			const radSegs = 120;
 			const steps = Math.max(10, Math.floor(segLen * 15));
 
-			const vertsOut = [], vertsIn = [], indicesOut = [], indicesIn = [], colorsOut = [], colorsIn = [], uvsIn = [];
+			const vertsOut = [], vertsIn = [], indicesOut = [], indicesIn = [], colorsOut = [], colorsIn = [], uvsIn = [], uvsOut = [];
 			const cColor = new THREE.Color(seg.color || '#ffcc00');
 
 			for (let i = 0; i <= steps; i++) {
@@ -1627,6 +1791,7 @@
 					const u = t_seg;
 					const v = j / radSegs;
 					uvsIn.push(u, v);
+					uvsOut.push(u, v); // <-- UV a külső héjhoz
 					
 					const vOut = getPointOnSlide(dist, a, 0, segIdx);
 					vertsOut.push(vOut.x, vOut.y, vOut.z);
@@ -1666,7 +1831,8 @@
 			const geoOut = new THREE.BufferGeometry();
 			geoOut.setAttribute('position', new THREE.Float32BufferAttribute(vertsOut, 3));
 			geoOut.setAttribute('color', new THREE.Float32BufferAttribute(colorsOut, 3));
-			geoOut.setIndex(indicesOut); 
+			geoOut.setAttribute('uv', new THREE.Float32BufferAttribute(uvsOut, 2)); // <-- Külső UV beállítása
+			geoOut.setIndex(indicesOut);
 			geoOut.computeVertexNormals();
 
 			const geoIn = new THREE.BufferGeometry();
@@ -1676,7 +1842,7 @@
 			geoIn.setIndex(indicesIn); 
 			geoIn.computeVertexNormals();
 
-			const segmentMatOut = seg.shape === 'open' ? openSlideMatOut : new THREE.MeshPhongMaterial({ vertexColors: true, side: THREE.FrontSide, shininess: 40 });
+			let segmentMatOut = seg.shape === 'open' ? openSlideMatOut : new THREE.MeshPhongMaterial({ vertexColors: true, side: THREE.FrontSide, shininess: 40 });
 
 			let segmentMatIn;
 			if (seg.shape === 'open') {
@@ -1691,7 +1857,36 @@
 				segmentMatIn = new THREE.MeshBasicMaterial({ map: tex, color: 0xffffff, side: THREE.FrontSide });
 				segmentMatIn.userData = { alwaysGlow: seg.alwaysGlow };
 				customTextureMaterials.push(segmentMatIn);
-			} else if (seg.light === 'futuristic_tunnel') {
+			} else if (seg.shape === 'lazy') {
+				lastTunnelSeed = null;
+				// Dinamikus Canvas textúra: felül kupola, alul csempe
+				const canvas = document.createElement('canvas');
+				canvas.width = 512; canvas.height = 512;
+				const ctx = canvas.getContext('2d');
+				
+				// Felső 50% (Kupola keretekkel)
+				ctx.fillStyle = 'rgba(180, 220, 255, 0.3)';
+				ctx.fillRect(0, 0, 512, 256);
+				ctx.strokeStyle = '#222222'; ctx.lineWidth = 6;
+				for(let i = 0; i <= 512; i += 64) { ctx.beginPath(); ctx.moveTo(i, 0); ctx.lineTo(i, 256); ctx.stroke(); }
+				ctx.beginPath(); ctx.moveTo(0, 256); ctx.lineTo(512, 256); ctx.stroke();
+
+				// Alsó 50% (Csempe)
+				ctx.fillStyle = '#e0f7fa';
+				ctx.fillRect(0, 256, 512, 256);
+				ctx.strokeStyle = '#00acc1'; ctx.lineWidth = 2;
+				for(let x = 0; x <= 512; x += 16) { ctx.beginPath(); ctx.moveTo(x, 256); ctx.lineTo(x, 512); ctx.stroke(); }
+				for(let y = 256; y <= 512; y += 16) { ctx.beginPath(); ctx.moveTo(0, y); ctx.lineTo(512, y); ctx.stroke(); }
+
+				const tex = new THREE.CanvasTexture(canvas);
+				tex.wrapS = tex.wrapT = THREE.RepeatWrapping;
+				tex.repeat.set(Math.ceil(segLen), 1);
+				tex.colorSpace = THREE.SRGBColorSpace;
+
+				segmentMatIn = new THREE.MeshPhongMaterial({ map: tex, transparent: true, side: THREE.DoubleSide, shininess: 60, color: 0xffffff });
+				segmentMatOut = segmentMatIn; // Kívülről is átlátszó
+				
+				} else if (seg.light === 'futuristic_tunnel') {
 				// TORZULÁSMENTES DINAMIKUS FELBONTÁS
 				const pxPerMeter = 150;
 				const C = Math.PI * (seg.diameter || 2.0);
@@ -1811,6 +2006,47 @@
 			meshIn.castShadow = true; meshIn.receiveShadow = true;
 
 			slideGroup.add(meshOut, meshIn);
+
+			// --- Vízszint generálása, ha lusta folyó ---
+			if (seg.shape === 'lazy') {
+				const wVerts = [], wIndices = [], wUvs = [];
+				const waterDepth = 1.0;
+				const r = seg.diameter / 2;
+				const waterY = -(r + 0.9) + waterDepth; // Aljzat + 1 méter
+
+				for (let i = 0; i <= steps; i++) {
+					const t_seg = i / steps;
+					const dist = currentDist + t_seg * segLen;
+					const pos = mainPath.getPointAt(Math.min(1, dist / totalLen));
+					const T = mainPath.getTangentAt(Math.min(1, dist / totalLen)).normalize();
+					
+					let B = new THREE.Vector3().crossVectors(T, worldUp).normalize();
+					if (B.lengthSq() < 0.0001) B = new THREE.Vector3().crossVectors(T, new THREE.Vector3(0, 0, 1)).normalize();
+					const N = new THREE.Vector3().crossVectors(B, T).normalize();
+
+					const wL = pos.clone().add(B.clone().multiplyScalar(-r)).add(N.clone().multiplyScalar(waterY));
+					const wR = pos.clone().add(B.clone().multiplyScalar(r)).add(N.clone().multiplyScalar(waterY));
+
+					wVerts.push(wL.x, wL.y, wL.z, wR.x, wR.y, wR.z);
+					wUvs.push(0, t_seg * segLen, 1, t_seg * segLen);
+				}
+
+				for (let i = 0; i < steps; i++) {
+					const row1 = i * 2, row2 = (i + 1) * 2;
+					wIndices.push(row1, row2, row1 + 1);
+					wIndices.push(row2, row2 + 1, row1 + 1);
+				}
+
+				const wGeo = new THREE.BufferGeometry();
+				wGeo.setAttribute('position', new THREE.Float32BufferAttribute(wVerts, 3));
+				wGeo.setAttribute('uv', new THREE.Float32BufferAttribute(wUvs, 2));
+				wGeo.setIndex(wIndices);
+				wGeo.computeVertexNormals();
+
+				const wMat = new THREE.MeshPhongMaterial({ color: 0x33aaff, transparent: true, opacity: 0.75, shininess: 90, side: THREE.DoubleSide });
+				slideGroup.add(new THREE.Mesh(wGeo, wMat));
+			}
+
 			currentDist = segEnd;
 		});
 	}
@@ -1902,7 +2138,175 @@
 
 			if (seg.light === 'rings') {
 				for (let d = currentDist + 0.5; d < segEnd; d += OCTANT_LEN / 17) { placeRing(d); }
-			} 
+			}
+			else if (seg.light === 'star_rings' && (seg.diameter || 2.0) >= 1.4) {
+				const D = seg.diameter || 2.0;
+				const R = D / 2;
+				const ringWidth = 0.08 * D;
+				const distStep = 0.90 * D;
+
+				// Szögek konvertálása (0 fok = cső alja)
+				const u2t = (deg) => (deg * Math.PI / 180) - Math.PI / 2;
+
+				// 1. A szünet szögének pontos kiszámítása (Ívhossz = 0.08 * D)
+				// Szög (radiánban) = Ívhossz / Sugár = (0.08 * D) / (D / 2) = 0.16 radián.
+				const gapRad = 0.16; 
+				const gapDeg = gapRad * (180 / Math.PI); // Kb. 9.17 fok
+				const hGap = gapDeg / 2; // Fél szünet, hogy szimmetrikus legyen a középvonalra
+
+				// 2. A 3 gyűrűszakasz pontos fokainak meghatározása
+				const arc1Start = u2t(30);              // 30 foktól indul (jobb oldal alja)
+				const arc1End   = u2t(150 - hGap);      // Felmegy a 150 fokos szünet aljáig
+
+				const arc2Start = u2t(150 + hGap);      // Szünet vége (tető szakasz kezdete)
+				const arc2End   = u2t(210 - hGap);      // Tető szakasz vége (210 fokos szünet eleje)
+
+				const arc3Start = u2t(210 + hGap);      // 210 fokos szünet vége
+				const arc3End   = u2t(330);             // Lemegy 330 fokig (bal oldal alja)
+
+				const circleR = (0.32 * D) / 2;
+				const starOuterR = (0.20 * D) / 2;
+				const starInnerR = starOuterR * 0.4; 
+
+				// Segédfüggvény: Halvány kör, benne csillag alakú lyukkal
+				function createCircleWithStarHole(pointsCount) {
+					const shape = new THREE.Shape();
+					shape.absarc(0, 0, circleR, 0, Math.PI * 2, false);
+					const holePath = new THREE.Path();
+					for (let i = pointsCount * 2; i >= 0; i--) {
+						const r = (i % 2 === 0) ? starOuterR : starInnerR;
+						const a = (i / (pointsCount * 2)) * Math.PI * 2 + Math.PI / 2;
+						if (i === pointsCount * 2) holePath.moveTo(Math.cos(a) * r, Math.sin(a) * r);
+						else holePath.lineTo(Math.cos(a) * r, Math.sin(a) * r);
+					}
+					shape.holes.push(holePath);
+					return new THREE.ShapeGeometry(shape);
+				}
+
+				const shape5Geo = createCircleWithStarHole(5);
+				const shape7Geo = createCircleWithStarHole(7);
+
+				// Segédfüggvény: Narancs gyűrű sáv
+				function createThickBand(d, sA, eA) {
+					const steps = Math.max(1, Math.ceil(Math.abs(eA - sA) / (Math.PI / 16)));
+					const verts = [], indices = [];
+					for(let i=0; i<=steps; i++) {
+						const ang = sA + (i/steps)*(eA - sA);
+						const pCenter = getPointOnSlide(d, ang, 0.020);
+						const tVal = Math.min(1, Math.max(0, d / totalLen));
+						const T = mainPath.getTangentAt(tVal).normalize();
+						
+						const p1 = pCenter.clone().add(T.clone().multiplyScalar(-ringWidth/2));
+						const p2 = pCenter.clone().add(T.clone().multiplyScalar(ringWidth/2));
+						
+						verts.push(p1.x, p1.y, p1.z, p2.x, p2.y, p2.z);
+						if (i > 0) {
+							const b = (i - 1) * 2;
+							indices.push(b, b+1, b+2, b+1, b+3, b+2);
+						}
+					}
+					const geo = new THREE.BufferGeometry();
+					geo.setAttribute('position', new THREE.Float32BufferAttribute(verts, 3));
+					geo.setIndex(indices);
+					geo.computeVertexNormals();
+					slideGroup.add(new THREE.Mesh(geo, orangeMat));
+
+					// Vörös LED-ek a gyűrűben
+					const ledSteps = Math.ceil(Math.abs(eA - sA) / 0.15);
+					for(let i=0; i<=ledSteps; i++) {
+						const ang = sA + (i/ledSteps)*(eA - sA);
+						const lp = getPointOnSlide(d, ang, 0.025);
+						const led = new THREE.Mesh(new THREE.SphereGeometry(0.015, 8, 8), redMat);
+						led.position.copy(lp);
+						led.userData = { angle: ang, dist: d };
+						starRingLeds.push(led);
+						slideGroup.add(led);
+					}
+				}
+
+				// Segédfüggvény: Csillag dísz elhelyezése KÖRBEKERÜLT LED-ekkel (Tökéletes illesztés)
+				function placeStarDecal(d, ang, shapeGeo, pts) {
+					// Narancs körlap a fekete csillag lyukkal
+					const bentGeo = bendGeometryToSlide(shapeGeo, d, ang, 0.022);
+					slideGroup.add(new THREE.Mesh(bentGeo, faintOrangeMat)); 
+
+					const ledGeo = new THREE.SphereGeometry(0.010, 8, 8); 
+					
+					const t_val = Math.max(0, Math.min(1, d / totalLen));
+					const pos = mainPath.getPointAt(t_val);
+					const T = mainPath.getTangentAt(t_val).normalize();
+					const worldUp = new THREE.Vector3(0, 1, 0);
+					let B = new THREE.Vector3().crossVectors(T, worldUp).normalize();
+					if (B.lengthSq() < 0.0001) {
+						const altUp = new THREE.Vector3(0, 0, 1);
+						B = new THREE.Vector3().crossVectors(T, altUp).normalize();
+					}
+					const N = new THREE.Vector3().crossVectors(B, T).normalize();
+
+					const ledOffsetR = R - 0.025; 
+
+					function getPerfectLocalPoint(lx, ly) {
+						const ledAng = ang - (ly / R);
+						const ox = Math.cos(ledAng) * ledOffsetR;
+						const oy = Math.sin(ledAng) * ledOffsetR;
+						return pos.clone()
+							.add(B.clone().multiplyScalar(ox))
+							.add(N.clone().multiplyScalar(oy))
+							.add(T.clone().multiplyScalar(lx));
+					}
+
+					// 1. KÖZÉPSŐ LED
+					const cLed = new THREE.Mesh(ledGeo, redMat);
+					cLed.position.copy(getPerfectLocalPoint(0, 0));
+					slideGroup.add(cLed);
+
+					// 2. CSILLAG ÉLEIN VÉGIGFUTÓ LED-EK GENERÁLÁSA
+					const numVertices = pts * 2;
+					const vertices = [];
+					for (let i = 0; i < numVertices; i++) {
+						const r = (i % 2 === 0) ? starOuterR : starInnerR;
+						const a = (i / numVertices) * Math.PI * 2 + Math.PI / 2;
+						vertices.push({ x: Math.cos(a) * r, y: Math.sin(a) * r });
+					}
+					vertices.push(vertices[0]); 
+
+					const ledSpacing = 0.025; 
+
+					for (let i = 0; i < numVertices; i++) {
+						const v1 = vertices[i];
+						const v2 = vertices[i + 1];
+						const dx = v2.x - v1.x;
+						const dy = v2.y - v1.y;
+						const edgeLen = Math.hypot(dx, dy);
+						const steps = Math.max(2, Math.round(edgeLen / ledSpacing));
+
+						for (let s = 0; s < steps; s++) { 
+							const t_edge = s / steps;
+							const lx = v1.x + dx * t_edge;
+							const ly = v1.y + dy * t_edge;
+
+							const led = new THREE.Mesh(ledGeo, redMat);
+							led.position.copy(getPerfectLocalPoint(lx, ly));
+							slideGroup.add(led);
+						}
+					}
+				}
+
+				// Generálás a teljes szakaszon
+				for (let d = currentDist + distStep / 2; d < segEnd; d += distStep) {
+					// --- MÓDOSÍTVA: Már 3 darab szakasz hívása ---
+					createThickBand(d, arc1Start, arc1End); // Jobb oldal (30° -> ~145°)
+					createThickBand(d, arc2Start, arc2End); // Tető (~155° -> ~205°)
+					createThickBand(d, arc3Start, arc3End); // Bal oldal (~215° -> 330°)
+
+					const dHalf = d + distStep / 2;
+					if (dHalf < segEnd) {
+						placeStarDecal(dHalf, u2t(90), shape5Geo, 5);  // Jobbra (5 ágú)
+						placeStarDecal(dHalf, u2t(180), shape7Geo, 7); // Fentre (7 ágú)
+						placeStarDecal(dHalf, u2t(270), shape5Geo, 5); // Balra (5 ágú)
+					}
+				}
+			}
 			else if (seg.light === 'stars') {
 				const cellLength = 0.2; 
 				const angleSpan = Math.PI; 
@@ -2247,33 +2651,47 @@
 			}
 			else if (seg.light === 'led_displays') {
 				const createLEDDisplayAt = (d, baseAngle, id, customRadius = 0.335, finalColor = '#ff0000') => {
+					// Sötét narancs háttér (burkolat)
 					const bgRadius = customRadius * (0.35 / 0.335);
 					const bgGeo = bendGeometryToSlide(new THREE.CircleGeometry(bgRadius, 32), d, baseAngle, 0.022);
 					const bgMesh = new THREE.Mesh(bgGeo, faintOrangeMat);
 					slideGroup.add(bgMesh);
 
-					const canvas = document.createElement('canvas');
-					canvas.width = 512; canvas.height = 512;
-					const ctx = canvas.getContext('2d');
-					const texture = new THREE.CanvasTexture(canvas);
-					const mat = new THREE.MeshBasicMaterial({ map: texture, transparent: true, side: THREE.DoubleSide });
-					
-					const displayGeo = new THREE.CircleGeometry(customRadius, 32);
-					const geo = bendGeometryToSlide(displayGeo, d, baseAngle, 0.032);
-					const mesh = new THREE.Mesh(geo, mat);
-					
+					// Milyen minta kell ide?
 					let pType = seg.ledPattern || 'all';
 					if (pType === 'all') {
 						pType = (id % 3 === 0) ? 'smiley' : ((id % 3 === 1) ? 'coil' : 'star');
 					}
+
+					// Készítünk egy egyedi kulcsot (pl. "smiley_#ff0000")
+					const cacheKey = pType + "_" + finalColor;
+					let mat;
+
+					// Ha már létrehoztuk ezt a mintát+színt a pályán, ÚJRAHASZNOSÍTJUK!
+					if (sharedLedMaterials[cacheKey]) {
+						mat = sharedLedMaterials[cacheKey].material;
+					} else {
+						// Ha még nincs ilyen, most létrehozzuk (EGYSZER!)
+						const canvas = document.createElement('canvas');
+						canvas.width = 512; canvas.height = 512;
+						const ctx = canvas.getContext('2d');
+						const texture = new THREE.CanvasTexture(canvas);
+						mat = new THREE.MeshBasicMaterial({ map: texture, transparent: true, side: THREE.DoubleSide });
+						
+						const displayData = {
+							canvas: canvas, ctx: ctx, texture: texture, material: mat,
+							patternType: pType, color: finalColor, lastUpdate: 0
+						};
+						
+						sharedLedMaterials[cacheKey] = displayData;
+						activeSharedLeds.push(displayData);
+					}
 					
-					mesh.userData = { 
-						canvas: canvas, ctx: ctx, texture: texture, 
-						patternType: pType, offset: d + id,
-						color: finalColor
-					};
+					// Maga a kijelző geometria, ráhúzva a KÖZÖS anyag
+					const displayGeo = new THREE.CircleGeometry(customRadius, 32);
+					const geo = bendGeometryToSlide(displayGeo, d, baseAngle, 0.032);
+					const mesh = new THREE.Mesh(geo, mat);
 					
-					imageDisplays.push(mesh);
 					slideGroup.add(mesh);
 				};
 
@@ -2476,17 +2894,12 @@
 				mesh.position.copy(pos);
 				mesh.lookAt(pos.clone().sub(T)); 
 				
-				const imageUrls = [
-					"https://threejs.org/examples/textures/brick_diffuse.jpg"
-				];
-				
 				const loadedImages = [];
-				imageUrls.forEach(url => {
-					const img = new Image();
-					img.crossOrigin = "Anonymous";
-					img.src = url;
-					loadedImages.push(img);
-				});
+				const img = new Image();
+				img.crossOrigin = "Anonymous";
+				// Ha van feltöltött kép (Base64), azt használja, különben az alapértelmezett képet
+				img.src = seg.customTextureBase64 || "https://threejs.org/examples/textures/brick_diffuse.jpg";
+				loadedImages.push(img);
 
 				mesh.userData = { 
 					canvas: canvas, ctx: ctx, texture: texture, 
@@ -3336,7 +3749,7 @@
     
     pauseBtn.addEventListener('click', () => {
         isPaused = !isPaused;
-        pauseBtn.innerText = isPaused ? "Kamera Folytatása" : "Kamera Megállítása";
+        pauseBtn.innerText = isPaused ? tr('camResume') : tr('camPause');
         pauseBtn.style.background = isPaused ? "#cc0000" : "#ff7700";
     });
 
@@ -3344,7 +3757,7 @@
     const modeBtn = document.getElementById('modeBtn');
     modeBtn.addEventListener('click', () => {
         isRandomOrder = !isRandomOrder;
-        modeBtn.innerText = isRandomOrder ? "Mód: Véletlen" : "Mód: Sorrendi";
+        modeBtn.innerText = isRandomOrder ? tr('modeRand') : tr('modeSeq');
         modeBtn.style.background = isRandomOrder ? "#9900ff" : "#0088ff";
     });
 
@@ -3402,9 +3815,20 @@
             }
             const up = new THREE.Vector3().crossVectors(side, tangent).normalize();
 
-            
-            const heightFromCenter = -window.SLIDE_RAD + 0.75;
+            // --- 1. JELENLEGI KAMERAPOZÍCIÓ MAGASSÁGA (Pontosan 70 cm az aljzattól) ---
             let propsNow = getSlideProps(t * totalLen);
+            let currentRadius = propsNow.diameter / 2;
+            
+            // Dinamikusan lekérdezzük a jelenlegi csőforma legalacsonyabb pontját (-Math.PI/2)
+            let p1_bottom = getShapeXY(propsNow.shape1, currentRadius, -Math.PI / 2, propsNow.lanes1);
+            let p2_bottom = getShapeXY(propsNow.shape2, currentRadius, -Math.PI / 2, propsNow.lanes2);
+            
+            // Sima morfolódás/átmenet kiszámítása a két forma között
+            let floorYOffset = p1_bottom.y * (1 - propsNow.t) + p2_bottom.y * propsNow.t;
+            
+            // Kameramagasság: a padló Y koordinátája + 0.70 méter
+            const heightFromCenter = floorYOffset + 0.70;
+
             let curLanes = (propsNow.shape2 === 'multi') ? (propsNow.lanes2 || 1) : 1; 
             let selectedLaneEl = document.getElementById('selectedLane');
             let selLane = selectedLaneEl ? Math.min(Math.max(1, parseInt(selectedLaneEl.value) || 1), curLanes) : 1;
@@ -3412,16 +3836,17 @@
             let laneOffset = 0;
             if (curLanes > 1) {
                 let u = ((selLane - 1) + 0.5) / curLanes; // A sáv közepe (0-1)
-                laneOffset = (u - 0.5) * window.SLIDE_RAD * 2;
+                laneOffset = (u - 0.5) * currentRadius * 2;
             }
 
-            // A side vektor felhasználása a balra/jobbra tolásához
+            // Kamera végső pozíciójának alkalmazása
             const cameraPos = pos.clone()
                 .add(up.clone().multiplyScalar(heightFromCenter))
                 .add(side.clone().multiplyScalar(laneOffset));
                 
             camera.position.copy(cameraPos);
             
+            // --- 2. CÉLPONT (LOOK-AT) MAGASSÁGA A FOLYAMATOS ÁTMENETEKÉRT ---
             const lookAheadDist = 2.0; 
             const lookAheadT = Math.min(t + (lookAheadDist / totalLen), 1.0);
             
@@ -3431,26 +3856,32 @@
             const targetSide = new THREE.Vector3().crossVectors(targetTangent, worldUp).normalize();
             const targetUp = new THREE.Vector3().crossVectors(targetSide, targetTangent).normalize();
             
-            // --- ÚJ: Sávválasztás offset a célpont (lookAt) számára ---
             let propsTarget = getSlideProps(lookAheadT * totalLen);
+            let targetRadius = propsTarget.diameter / 2;
+
+            // Lekérdezzük a padlót a 2 méterrel előrébb lévő (lookAt) ponton is
+            let p1_targetBottom = getShapeXY(propsTarget.shape1, targetRadius, -Math.PI / 2, propsTarget.lanes1);
+            let p2_targetBottom = getShapeXY(propsTarget.shape2, targetRadius, -Math.PI / 2, propsTarget.lanes2);
+            let targetFloorYOffset = p1_targetBottom.y * (1 - propsTarget.t) + p2_targetBottom.y * propsTarget.t;
+
+            // A célpont is pontosan 70 cm-re van a célpont padlójától
+            const targetHeightFromCenter = targetFloorYOffset + 0.70;
+
             let targetLanes = (propsTarget.shape2 === 'multi') ? (propsTarget.lanes2 || 1) : 1;
             let selLaneTarget = selectedLaneEl ? Math.min(Math.max(1, parseInt(selectedLaneEl.value) || 1), targetLanes) : 1;
             
             let laneOffsetTarget = 0;
             if (targetLanes > 1) {
                 let uT = ((selLaneTarget - 1) + 0.5) / targetLanes;
-                laneOffsetTarget = (uT - 0.5) * window.SLIDE_RAD * 2;
+                laneOffsetTarget = (uT - 0.5) * targetRadius * 2;
             }
 
             const lookAtPos = targetPos
-                .add(targetUp.clone().multiplyScalar(heightFromCenter))
+                .add(targetUp.clone().multiplyScalar(targetHeightFromCenter))
                 .add(targetSide.clone().multiplyScalar(laneOffsetTarget));
                 
             camera.lookAt(lookAtPos);
-            
-            
-           
-           
+			
         } else {
             if (controls) controls.update();
            
@@ -3496,6 +3927,12 @@
 				s.visible = clusterTwinkle > -0.4;
 				s.material.color.setHex(multiColors[clusterPhase % 4]);
 			}
+		});
+		
+		starRingLeds.forEach((led) => {
+			// Pulzáló futófény: sötétben élénk, az idő függvényében mozog az íveken
+			const wave = Math.sin(led.userData.dist * 5 - time * 4 + led.userData.angle * 10);
+			led.visible = (wave > 0);
 		});
 
 		const animCycleDuration = 20.0; // 6 másodpercenként váltakozó programok
@@ -3561,21 +3998,25 @@
 		});
 		turnLeds.forEach((l, i) => l.visible = Math.floor(time * 10 + i) % 2 === 0);
         zigzagLeds.forEach((l, i) => l.visible = (Math.floor(time * 5 + i) % 5 === 0));
-		imageDisplays.forEach(disp => {
-			if (!disp.userData.lastUpdate) disp.userData.lastUpdate = 0;
-			if (time - disp.userData.lastUpdate < 0.033) return; // Limitálva ~30 FPS-re
-			disp.userData.lastUpdate = time;
-			const { canvas, ctx, texture, patternType, offset } = disp.userData;
-			const displayColor = disp.userData.color || '#ff0000'; // Dinamikus szín lekérése
-			const t_fast = time * 8 + offset;
-			const t_slow = time * 2 + offset;
+		activeSharedLeds.forEach(disp => {
+			if (!disp.lastUpdate) disp.lastUpdate = 0;
+			if (time - disp.lastUpdate < 0.033) return; // Limitálva ~30 FPS-re
+			disp.lastUpdate = time;
+			
+			const { canvas, ctx, texture, patternType, color } = disp;
+			const displayColor = color; 
+			
+			// Nincs offset, így minden azonos típusú LED szinkronban villog (ezt a teljesítményért cserébe beáldozzuk)
+			const t_fast = time * 8;
+			const t_slow = time * 2;
 			
 			ctx.clearRect(0, 0, 512, 512);
 			ctx.strokeStyle = displayColor;
 			ctx.fillStyle = displayColor;
 			ctx.lineWidth = 12;
 			ctx.lineCap = 'round';
-			ctx.shadowBlur = 25;
+			// A shadowBlur nagyon eszi a processzort, ha még mindig akad, ezt vedd ki:
+			ctx.shadowBlur = 25; 
 			ctx.shadowColor = displayColor;
 
 			if (patternType === 'smiley') {
@@ -3589,13 +4030,11 @@
 				}
 
 			} else if (patternType === 'coil') {
-				
-				const modeSwitch = Math.floor(time / 4 + offset) % 2; 
+				const modeSwitch = Math.floor(time / 4) % 2; 
 				ctx.save();
 				ctx.translate(256, 256);
 
 				if (modeSwitch === 0) {
-					
 					for (let i = 0; i < 3; i++) {
 						const r = 70 + i * 70;
 						const pulse = 0.6 + Math.sin(t_fast - i * 1.2) * 0.4;
@@ -3603,48 +4042,37 @@
 						ctx.beginPath(); ctx.arc(0, 0, r, 0, Math.PI * 2); ctx.stroke();
 					}
 				} else {
-					
 					ctx.rotate(t_fast * 0.2); 
 					const globalPulse = 1.0 + Math.sin(t_fast * 0.5) * 0.2; 
 					ctx.scale(globalPulse, globalPulse);
 
-					
 					for(let j=0; j<3; j++) { ctx.beginPath(); ctx.arc(0, 0, 15 + j*15, 0, Math.PI*2); ctx.stroke(); }
 
-					
 					for (let i = 0; i < 5; i++) {
 						const angle = (i / 5) * Math.PI * 2;
 						const x = Math.cos(angle) * 160;
 						const y = Math.sin(angle) * 160;
-						ctx.beginPath(); 
-						ctx.arc(x, y, 45, 0, Math.PI * 2); 
-						ctx.stroke();
-						ctx.beginPath(); 
-						ctx.arc(x, y, 25, 0, Math.PI * 2); 
-						ctx.stroke();
+						ctx.beginPath(); ctx.arc(x, y, 45, 0, Math.PI * 2); ctx.stroke();
+						ctx.beginPath(); ctx.arc(x, y, 25, 0, Math.PI * 2); ctx.stroke();
 					}
 				}
 				ctx.restore();
 				ctx.globalAlpha = 1.0;
 
 			} else if (patternType === 'star') {
-				
 				ctx.save();
 				ctx.translate(256, 256);
-				
 				
 				const glowScale = 1.2 + Math.sin(t_fast * 0.4) * 0.2;
 				ctx.globalAlpha = 0.3;
 				ctx.beginPath(); ctx.arc(0, 0, 180 * glowScale, 0, Math.PI * 2); ctx.fill();
 				ctx.globalAlpha = 1.0;
 
-				
 				ctx.save();
 				ctx.rotate(t_fast * 0.15);
 				drawStar(ctx, 5, 230, 90);
 				ctx.restore();
 
-				
 				ctx.save();
 				ctx.rotate(-t_fast * 0.4);
 				const innerPulse = 0.8 + Math.sin(t_fast) * 0.2;
@@ -3725,11 +4153,27 @@
 			const currentImg = images[wc.userData.imgIdx];
 
 			if (currentImg.complete && currentImg.naturalWidth !== 0) {
-				const scale = 512 / currentImg.naturalHeight;
-				const drawWidth = currentImg.naturalWidth * scale;
-				const drawX = (512 - drawWidth) / 2;
+				const imgW = currentImg.naturalWidth;
+				const imgH = currentImg.naturalHeight;
+				const imgAspect = imgW / imgH;
 				
-				ctx.drawImage(currentImg, drawX, 0, drawWidth, 512);
+				let drawWidth, drawHeight, drawX, drawY;
+
+				if (imgAspect < 1.0) { 
+					// Álló kép: A szélesség pontosan kitölti a csövet, a tetejéből és az aljából vág le
+					drawWidth = 512;
+					drawHeight = 512 / imgAspect;
+					drawX = 0;
+					drawY = (512 - drawHeight) / 2; 
+				} else { 
+					// Fekvő kép: A magasság pontosan kitölti a csövet, a két oldalából vág le
+					drawHeight = 512;
+					drawWidth = 512 * imgAspect;
+					drawY = 0;
+					drawX = (512 - drawWidth) / 2; 
+				}
+
+				ctx.drawImage(currentImg, drawX, drawY, drawWidth, drawHeight);
 			} else {
 				ctx.fillStyle = '#ffffff';
 				ctx.font = 'bold 40px Arial';
@@ -4403,7 +4847,7 @@
 	
 	viewBtn.addEventListener('click', () => {
 		isExternal = !isExternal;
-		viewBtn.innerText = isExternal ? "Nézet: Külső" : "Nézet: Belső";
+		viewBtn.innerText = isExternal ? tr('viewOutside') : tr('viewInside');
 		controls.enabled = isExternal;
 		if (isExternal) {
 			camera.position.set(20, 20, 20);
