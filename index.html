@@ -870,8 +870,7 @@
 		const barEl = document.getElementById('genBarFill');
 		const statusEl = document.getElementById('genStatus');
 
-		// A háttér fonalát áttetszőbbre vesszük (0.7 opacity), hogy lásd a 3D csúszda növekedését mögötte!
-		overlay.style.backgroundColor = 'rgba(0, 0, 0, 0.7)';
+		overlay.style.backgroundColor = 'rgba(0, 0, 0, 0.9)';
 		overlay.style.display = 'flex';
 		titleEl.innerText = titleText;
 		titleEl.style.color = '#00ff88';
@@ -879,7 +878,7 @@
 		barEl.style.boxShadow = '0 0 15px #0088ff';
 
 		let currentLength = initialLength;
-		const chunkSize = 100; // 100 méterenként azonnal megállunk és kirajzoljuk a 3D-t!
+		const chunkSize = 500; // 500m-es lépésekben generáljuk le az adatokat tömbben (szupergyors)
 
 		function nextChunk() {
 			let chunkTarget = Math.min(currentLength + chunkSize, targetLength);
@@ -888,27 +887,30 @@
 				currentLength += generatorStepFn();
 			}
 
-			// VALÓS IDEJŰ KIRAJZOLÁS: Azonnal felépítjük a 3D modellt az eddigi szakaszokból!
-			renderUI();
-			rebuildSlide();
-
-			// Százalék és Progress Bar frissítése
 			let percent = Math.min(100, Math.round((currentLength / targetLength) * 100));
 			barEl.style.width = percent + '%';
-			statusEl.innerText = `Élő 3D Építés: ${Math.floor(currentLength)}m / ${targetLength}m (${percent}%)`;
+			statusEl.innerText = `Útvonal tervezése: ${Math.floor(currentLength)}m / ${targetLength}m (${percent}%)`;
 
 			if (currentLength < targetLength) {
-				// Átadjuk a szót a Three.js-nek, hogy megjelenítse az új csőszakaszt a képernyőn
 				requestAnimationFrame(nextChunk);
 			} else {
-				if (onComplete) onComplete();
+				// Ha a teljes útvonal kész (pár tizedmásodperc), EGYETLEN EGYSZER építjük fel a 3D-t!
+				barEl.style.width = '100%';
+				titleEl.innerText = "3D Modell felépítése...";
+				titleEl.style.color = '#ffaa00';
+				barEl.style.backgroundColor = '#ffaa00';
+				statusEl.innerText = "Kérlek várj egy pillanatot...";
+
 				setTimeout(() => {
-					overlay.style.display = 'none';
-				}, 200);
+					requestAnimationFrame(() => {
+						renderUI();
+						rebuildSlide();
+						overlay.style.display = 'none';
+					});
+				}, 100);
 			}
 		}
 
-		// Indítás
 		requestAnimationFrame(nextChunk);
 	}
 
@@ -941,19 +943,63 @@
 
 	window.randomStarGateGenerator = function() {
 		PARAMS.segments = [];
-		const globalD = 2.0; const globalS = 0.08; 
+		const globalD = 2.0;
+		const globalS = 0.08; 
 		document.getElementById('slideDiameter').value = globalD;
 		document.getElementById('globalSlope').value = globalS;
 
 		const targetLength = parseInt(document.getElementById('randomGenLength').value) || 60;
-		let firstSeg = { type: "straight", len: 12, light: getRandomLight("straight", globalD), diameter: globalD, slope: globalS, shape: 'circle', color: '#ff7700' };
+
+		let startLight = getRandomLight("straight", globalD);
+		let firstSeg = { type: "straight", len: 12, light: startLight, diameter: globalD, slope: globalS, shape: 'circle', color: '#ff7700' };
 		PARAMS.segments.push(applyRandomLightParams(firstSeg));
 
+		let currentLength = 12;
+		let lastWasStraight = true; // Mivel a kezdő elem 12m egyenes
+
 		function tubeStep() {
-			let radius = 5; let angle = 45 + Math.random() * 90;
-			let addedLen = (radius * angle * Math.PI / 180);
-			let newSeg = { type: "turn", radius: radius, angle: angle, dir: Math.random() > 0.5 ? "left" : "right", light: getRandomLight("turn", globalD), diameter: globalD, slope: globalS, shape: 'circle', color: '#ff7700' };
-			PARAMS.segments.push(applyRandomLightParams(newSeg));
+			// Ha az előző elem egyenes volt, most kötelezően kanyar jön!
+			// Egyébként 25% eséllyel rakunk be egy rövid 4m vagy 8m-es egyenest.
+			let isStraight = !lastWasStraight && (Math.random() < 0.5);
+			let addedLen = 0;
+
+			if (isStraight) {
+				lastWasStraight = true;
+				// Véletlenszerűen 4 méter vagy 8 méter hosszú egyenes
+				let straightLen = Math.random() > 0.5 ? 4 : 2; 
+				let rndLight = getRandomLight("straight", globalD);
+				addedLen = straightLen;
+
+				PARAMS.segments.push(applyRandomLightParams({ 
+					type: "straight", 
+					len: straightLen, 
+					light: rndLight, 
+					diameter: globalD, 
+					slope: globalS, 
+					shape: 'circle', 
+					color: '#ff7700' 
+				}));
+			} else {
+				lastWasStraight = false;
+				let radius = 5;
+				let angle = 45 + Math.random() * 90;
+				let dir = Math.random() > 0.5 ? "left" : "right";
+				let rndLight = getRandomLight("turn", globalD);
+				addedLen = (radius * angle * Math.PI / 180);
+
+				PARAMS.segments.push(applyRandomLightParams({ 
+					type: "turn", 
+					radius: radius, 
+					angle: angle, 
+					dir: dir, 
+					light: rndLight, 
+					diameter: globalD, 
+					slope: globalS, 
+					shape: 'circle', 
+					color: '#ff7700' 
+				}));
+			}
+
 			return addedLen;
 		}
 
@@ -5480,25 +5526,65 @@
 	});
 
 	
+	// ==============================================================
+	// GLOBÁLIS BILLENTYŰPARANCSOK (UI-tól függetlenül működnek)
+	// ==============================================================
+	function togglePauseState() {
+		isPaused = !isPaused;
+		const pauseBtn = document.getElementById('pauseBtn');
+		if (pauseBtn) {
+			pauseBtn.innerText = isPaused ? tr('camResume') : tr('camPause');
+			pauseBtn.style.background = isPaused ? "#cc0000" : "#ff7700";
+		}
+	}
+
+	function resetToSlideStart() {
+		progress = 0;
+		simulatedSpeed = 1.5; // Alap kezdősebesség
+		slideTime = 0;
+		timerRunning = false;
+		if (timerDisplay) timerDisplay.innerText = "00:00.00";
+	}
+
+	function toggleTimerOnly() {
+		if (timerDisplay) {
+			timerDisplay.style.display = (timerDisplay.style.display === 'none') ? 'block' : 'none';
+		}
+	}
+
 	window.addEventListener('keydown', (e) => {
-    	    if (e.key.toLowerCase() === 'h') {
-            const uiElements = [
-            document.getElementById('ui-panel'),
-            document.getElementById('pauseBtn'),
-            document.getElementById('modeBtn'),
-            document.getElementById('timerDisplay')
-        ];
-        
-        
-        const isHidden = uiElements[0].style.display === 'none';
-        
-        uiElements.forEach(el => {
-            if (el) {
-                el.style.display = isHidden ? 'block' : 'none';
-            }
-        });
-    }
-});
+		// BIZTONSÁGI ELLENŐRZÉS: Ha a menüben épp gépelsz egy beviteli mezőbe, ne aktiválja a parancsokat
+		const activeTag = document.activeElement ? document.activeElement.tagName.toLowerCase() : '';
+		if (['input', 'textarea', 'select'].includes(activeTag)) return;
+
+		const key = e.key.toLowerCase();
+
+		// 'H' -> Menü panel és felső gombok elrejtése / mutatása
+		if (key === 'h') {
+			const uiPanel = document.getElementById('ui-panel');
+			const pauseBtn = document.getElementById('pauseBtn');
+			const modeBtn = document.getElementById('modeBtn');
+			if (uiPanel) {
+				const isHidden = uiPanel.style.display === 'none';
+				uiPanel.style.display = isHidden ? 'block' : 'none';
+				if (pauseBtn) pauseBtn.style.display = isHidden ? 'block' : 'none';
+				if (modeBtn) modeBtn.style.display = isHidden ? 'block' : 'none';
+			}
+		}
+		// 'SZÓKÖZ' (Space) vagy 'P' -> Elindítás / Megállítás
+		else if (e.code === 'Space' || key === 'p') {
+			e.preventDefault(); // Megakadályozza, hogy a Szóköz lefele görgesse az oldalt
+			togglePauseState();
+		}
+		// 'R' -> Visszaugrás a csúszda elejére
+		else if (key === 'r') {
+			resetToSlideStart();
+		}
+		// 'T' -> Időmérő stopper elrejtése / mutatása (függetlenül a menütől)
+		else if (key === 't') {
+			toggleTimerOnly();
+		}
+	});
 	
 	window.runRandom = function() {
 		
