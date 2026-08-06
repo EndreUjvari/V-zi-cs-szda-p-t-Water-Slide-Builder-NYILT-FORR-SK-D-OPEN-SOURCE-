@@ -939,13 +939,9 @@
 			}
 		} else {
 			const startSequence = [
-				{ type: "straight", len: 4, radius: 4, angle: 90, dir: "left", diameter: 2.0, slope: 0.09, shape: "circle", color: mainMoonColor, innerColor: "#000000", light: "dark", lanes: 3 },
-				{ type: "straight", len: 4, radius: 4, angle: 90, dir: "left", diameter: 2.0, slope: 0.09, shape: "circle", color: mainMoonColor, innerColor: "#000000", light: "led_displays", ledPattern: "coil", lanes: 3 },
-				{ type: "straight", len: 2, radius: 4, angle: 90, dir: "left", diameter: 2.0, slope: 0.09, shape: "circle", color: mainMoonColor, innerColor: "#000000", light: "led_displays", ledPattern: "coil", lanes: 3 },
-				{ type: "straight", len: 4, radius: 4, angle: 90, dir: "left", diameter: 2.0, slope: 0.09, shape: "circle", color: mainMoonColor, innerColor: "#000000", light: "led_displays", ledPattern: "coil", lanes: 3 },
-				{ type: "straight", len: 8, radius: 4, angle: 90, dir: "left", diameter: 2.0, slope: 0.09, shape: "circle", color: mainMoonColor, innerColor: "#000000", light: "dark", lanes: 3 }
+				{ type: "straight", len: 4, radius: 4, angle: 90, dir: "left", diameter: 2.0, slope: 0.09, shape: "circle", color: mainMoonColor, innerColor: "#000000", light: "dark", lanes: 3 }
 			];
-			if (segIdx >= 0 && segIdx < 5) return Object.assign({}, startSequence[segIdx]);
+			if (segIdx >= 0 && segIdx < 1) return Object.assign({}, startSequence[segIdx]);
 			if (segIdx === 5) {
 				const dir = seedRng(segIdx, 4) > 0.5 ? "left" : "right";
 				const angle = 180 + Math.floor(seedRng(segIdx, 3) * 45); 
