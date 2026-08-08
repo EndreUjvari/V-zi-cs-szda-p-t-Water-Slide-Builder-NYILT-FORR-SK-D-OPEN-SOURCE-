@@ -35,10 +35,14 @@
         Mód: Sorrendi
     </button>
 	<div id="ui-panel">
+		<div>NYELV/LANGUAGE:</div>
 		<div style="text-align: right; margin-bottom: 10px;">
 			<button onclick="setLang('hu')" style="background: #cc0000; color: white; border: none; padding: 2px 8px; cursor: pointer; border-radius: 3px;">HU</button>
 			<button onclick="setLang('en')" style="background: #0000cc; color: white; border: none; padding: 2px 8px; cursor: pointer; border-radius: 3px;">EN</button>
 		</div>
+		<div>GRAFIKA/GRAPHICS</div>
+		<label style="color:#00ff88; font-weight:bold; margin-top:10px; display:block;">Kanyar Ív Felbontása / Curve arc resolution:</label>
+		<input type="number" id="turnResolution" min="20" max="300" value="100" style="text-align:center;" onchange="rebuildSlide()">
         <div class="param-group">
             <label data-tr="slideDiameter">Csúszda átmérő (m)</label>
             <input type="number" id="slideDiameter" step="0.1" value="2.0">
@@ -843,6 +847,50 @@
 		}
 		return { x: currX, y: -accumDist * 0.08, z: currZ, yaw: currYaw, dist: accumDist };
 	}
+	class SlideTurnCurve extends THREE.Curve {
+		constructor(center, radius, startAngle, sweepAngle, startY, endY) {
+			super();
+			this.center = center.clone();
+			this.radius = radius;
+			this.startAngle = startAngle;
+			this.sweepAngle = sweepAngle;
+			this.startY = startY;
+			this.endY = endY;
+		}
+
+		getPoint(t, optionalTarget = new THREE.Vector3()) {
+			const point = optionalTarget || new THREE.Vector3();
+			const clampedT = Math.max(0, Math.min(1, t));
+			const angle = this.startAngle + clampedT * this.sweepAngle;
+			const x = this.center.x + Math.cos(angle) * this.radius;
+			const z = this.center.z + Math.sin(angle) * this.radius;
+			const y = this.startY + clampedT * (this.endY - this.startY);
+			return point.set(x, y, z);
+		}
+	}
+	class SlideSpiralCurve extends THREE.Curve {
+		constructor(center, radiusStart, radiusEnd, startAngle, sweepAngle, startY, endY) {
+			super();
+			this.center = center.clone();
+			this.rStart = radiusStart;
+			this.rEnd = radiusEnd;
+			this.startAngle = startAngle;
+			this.sweepAngle = sweepAngle;
+			this.startY = startY;
+			this.endY = endY;
+		}
+
+		getPoint(t, optionalTarget = new THREE.Vector3()) {
+			const point = optionalTarget || new THREE.Vector3();
+			const clampedT = Math.max(0, Math.min(1, t));
+			const angle = this.startAngle + clampedT * this.sweepAngle;
+			const r = this.rStart * (1 - clampedT) + this.rEnd * clampedT;
+			const x = this.center.x + Math.cos(angle) * r;
+			const z = this.center.z + Math.sin(angle) * r;
+			const y = this.startY + clampedT * (this.endY - this.startY);
+			return point.set(x, y, z);
+		}
+	}
 	function createSlidePathFromState(startState, segmentsList) {
 		const path = new THREE.CurvePath();
 		let currP = new THREE.Vector3(startState.x, startState.y, startState.z);
@@ -1600,25 +1648,35 @@
 	function bendGeometryToSlide(baseGeo, d, baseAngle, offsetDist) {
 		const geo = baseGeo.clone();
 		const posAttr = geo.attributes.position;
-		const clampedDist = Math.max(0, Math.min(totalLen, d));
-		const t = clampedDist / totalLen;
-		const pos = getPointAtDistance(clampedDist); 
-		const T = getTangentAtDistance(clampedDist); 
-		const worldUp = new THREE.Vector3(0, 1, 0);
-		let B = new THREE.Vector3().crossVectors(T, worldUp).normalize();
-		if (B.lengthSq() < 0.0001) {
-			const altUp = new THREE.Vector3(0, 0, 1);
-			B = new THREE.Vector3().crossVectors(T, altUp).normalize();
-		}
-		const N = new THREE.Vector3().crossVectors(B, T).normalize();
-		let props = getSlideProps(clampedDist);
-		const isLazy = (props.shape1 === 'lazy' || props.shape2 === 'lazy');
-		const nominalR = props.diameter / 2;
-		const R_actual = isLazy ? 3.0 : nominalR;
-		const r = R_actual - offsetDist;
+		baseGeo.computeBoundingBox();
+		const bbox = baseGeo.boundingBox;
+		const minX = bbox.min.x;
+		const maxX = bbox.max.x;
+		const rangeX = (maxX - minX) || 1.0;
 		for (let i = 0; i < posAttr.count; i++) {
 			const lx = posAttr.getX(i);
 			const ly = posAttr.getY(i);
+			const progressT = Math.max(0, Math.min(1, (lx - minX) / rangeX));
+			const segLen = rangeX;
+			const segStart = d - segLen / 2;
+			const clampedDist = Math.max(0, Math.min(totalLen, segStart + progressT * segLen));
+			const deltaSample = 0.02;
+			const pPrev = getPointAtDistance(Math.max(0, clampedDist - deltaSample));
+			const pNext = getPointAtDistance(Math.min(totalLen, clampedDist + deltaSample));
+			const pos = getPointAtDistance(clampedDist);
+			const T = pNext.clone().sub(pPrev).normalize();
+			const worldUp = new THREE.Vector3(0, 1, 0);
+			let B = new THREE.Vector3().crossVectors(T, worldUp).normalize();
+			if (B.lengthSq() < 0.0001) {
+				const altUp = new THREE.Vector3(0, 0, 1);
+				B = new THREE.Vector3().crossVectors(T, altUp).normalize();
+			}
+			const N = new THREE.Vector3().crossVectors(B, T).normalize();
+			let props = getSlideProps(clampedDist);
+			const isLazy = (props.shape1 === 'lazy' || props.shape2 === 'lazy');
+			const nominalR = props.diameter / 2;
+			const R_actual = isLazy ? 3.0 : nominalR;
+			const r = R_actual - offsetDist;
 			const angle = baseAngle - (ly / R_actual);
 			let p1 = getShapeXY(props.shape1, r, angle, props.lanes1, nominalR);
 			let p2 = getShapeXY(props.shape2, r, angle, props.lanes2, nominalR);
@@ -1626,8 +1684,7 @@
 			let oy = p1.y * (1 - props.t) + p2.y * props.t;
 			const bentPos = pos.clone()
 				.add(B.clone().multiplyScalar(ox))
-				.add(N.clone().multiplyScalar(oy))
-				.add(T.clone().multiplyScalar(lx));
+				.add(N.clone().multiplyScalar(oy));
 			posAttr.setXYZ(i, bentPos.x, bentPos.y, bentPos.z);
 		}
 		geo.computeVertexNormals();
@@ -3245,234 +3302,246 @@
 		const path = new THREE.CurvePath();
 		let currP = new THREE.Vector3(0, 0, 0);
 		let currYaw = -Math.PI / 2; 
-		let totalS = 0;
-        let currY = 0; 
-		PARAMS.segments.forEach(seg => {
-            const slope = seg.slope !== undefined ? seg.slope : 0.055;
+		let currY = 0; 
+
+		PARAMS.segments.forEach((seg, segIdx) => {
+			seg._startCurveIdx = path.curves.length;
+
+			const slope = seg.slope !== undefined ? seg.slope : 0.055;
 			if (seg.type === 'straight') {
 				const length = seg.len || 0.1;
 				const nextP = new THREE.Vector3(currP.x + Math.cos(currYaw) * length, 0, currP.z + Math.sin(currYaw) * length);
-                const nextY = currY - length * slope;
+				const nextY = currY - length * slope;
+
 				const p1 = currP.clone(); const p2 = nextP.clone();
 				p1.y = currY; p2.y = nextY;
+
 				path.add(new THREE.LineCurve3(p1, p2));
 				currP.copy(nextP);
-                currY = nextY;
-				totalS += length;
+				currY = nextY;
 			} 
 			else if (seg.type === 'turn') {
 				const radius = parseFloat(seg.radius) || 0.1;
 				const angleDeg = parseFloat(seg.angle) || 0;
 				const angleRad = (angleDeg * Math.PI) / 180;
 				if (angleDeg === 0) return;
+
 				const isLeft = (seg.dir === 'left');
 				const sweep = isLeft ? -angleRad : angleRad;
 				const centerAngle = currYaw + (isLeft ? -Math.PI/2 : Math.PI/2);
 				const center = new THREE.Vector3(currP.x + Math.cos(centerAngle) * radius, 0, currP.z + Math.sin(centerAngle) * radius);
 				const startAngle = Math.atan2(currP.z - center.z, currP.x - center.x);
-                const curveLen = radius * angleRad;
-                const nextY = currY - curveLen * slope;
-				const steps = Math.ceil(angleDeg / 5) + 5;
-				for (let i = 0; i < steps; i++) {
-					const a1 = startAngle + (i / steps) * sweep;
-					const a2 = startAngle + ((i + 1) / steps) * sweep;
-                    const p1Y = currY + (nextY - currY) * (i / steps);
-                    const p2Y = currY + (nextY - currY) * ((i + 1) / steps);
-					const p1 = new THREE.Vector3(center.x + Math.cos(a1) * radius, p1Y, center.z + Math.sin(a1) * radius);
-					const p2 = new THREE.Vector3(center.x + Math.cos(a2) * radius, p2Y, center.z + Math.sin(a2) * radius);
-					path.add(new THREE.LineCurve3(p1, p2));
-				}
+
+				const curveLen = radius * angleRad;
+				const nextY = currY - curveLen * slope;
+
+				// SOKSZÖG LÁNC HELYETT EGYETLEN TÖKÉLETES MATEMATIKAI KÖR ÍV!
+				const turnCurve = new SlideTurnCurve(center, radius, startAngle, sweep, currY, nextY);
+				path.add(turnCurve);
+
 				currYaw += sweep;
-				const finalPoint = path.curves[path.curves.length - 1].v2;
-				currP.set(finalPoint.x, 0, finalPoint.z);
-                currY = nextY;
-				totalS += curveLen;
+				const finalPoint = turnCurve.getPoint(1);
+				currP.copy(finalPoint);
+				currY = nextY;
 			}
 			else if (seg.type === 'space_bowl') {
 				const bowlD = parseFloat(seg.bowlDiameter) || 8.0;
 				const rotations = parseFloat(seg.rotations) || 2.0;
-				const slope = seg.slope !== undefined ? seg.slope : 0.055;
 				const isLeft = (seg.dir === 'left');
 				const R_tube = (seg.diameter || 2.0) / 2;
-				const R_start = (bowlD / 2) - R_tube * 1.1; 
-				const R_exit = 0.0; 
+				const R_start = (bowlD / 2) - R_tube * 1.1;
+				const R_exit = 0.0;
+				
 				const centerAngle = currYaw + (isLeft ? -Math.PI/2 : Math.PI/2);
-				const avgR = (R_start + R_exit) / 2;
 				const sweep = (isLeft ? -1 : 1) * Math.PI * 1 * rotations;
-				const spiralLen = avgR * Math.abs(sweep);
-				const spiralDrop = Math.max(R_tube + 0.5, spiralLen * slope);
-				const center = new THREE.Vector3(
-					currP.x + Math.cos(centerAngle) * R_start, 
-					currY - spiralDrop, 
-					currP.z + Math.sin(centerAngle) * R_start
-				);
+				const spiralDrop = Math.max(R_tube + 0.5, (R_start/2 * Math.abs(sweep)) * slope);
+				
+				const center = new THREE.Vector3(currP.x + Math.cos(centerAngle) * R_start, currY - spiralDrop, currP.z + Math.sin(centerAngle) * R_start);
 				const startAngle = Math.atan2(currP.z - center.z, currP.x - center.x);
+				
 				seg.computedCenter = center.clone();
 				seg.computedStartAngle = startAngle;
 				seg.computedSpiralDrop = spiralDrop;
 				seg.computedRStart = R_start;
 				seg.computedStartPos = new THREE.Vector3(currP.x, currY, currP.z);
 				seg.computedStartTangent = new THREE.Vector3(Math.cos(currYaw), -slope, Math.sin(currYaw)).normalize();
-				const spiralSteps = 100;
-				let lastSpiralPoint = currP.clone();
-				lastSpiralPoint.y = currY;
-				const bowlHeight = Math.max(2.0, spiralDrop); 
-				for (let i = 1; i <= spiralSteps; i++) {
-					const f = i / spiralSteps;
-					const a = startAngle + f * sweep;
-					const r = R_start * (1 - f) + R_exit * f;
-					const pY = currY * (1 - f) + (center.y) * f;
-					const p = new THREE.Vector3(
-						center.x + Math.cos(a) * r,
-						pY,
-						center.z + Math.sin(a) * r
-					);
-					path.add(new THREE.LineCurve3(lastSpiralPoint.clone(), p.clone()));
-					lastSpiralPoint.copy(p);
-				}
-				const dropLen = 0.1; 
+
+				// MATEMATIKAI TÖKÉLETES SPIRÁL GÖRBE A TÁLHOZ
+				const spiralCurve = new SlideSpiralCurve(center, R_start, R_exit, startAngle, sweep, currY, center.y);
+				path.add(spiralCurve);
+
+				const lastSpiralPoint = spiralCurve.getPoint(1);
+				const dropLen = 0.1;
 				const dropEndP = lastSpiralPoint.clone();
 				dropEndP.y -= dropLen;
 				path.add(new THREE.LineCurve3(lastSpiralPoint.clone(), dropEndP.clone()));
+				
 				currP.copy(dropEndP);
 				currP.y = 0; 
 				currY = dropEndP.y;
-				const lastSpiralYaw = startAngle + sweep + (isLeft ? -Math.PI/2 : Math.PI/2);
-				currYaw = lastSpiralYaw;
-				seg.computedExitTangent = new THREE.Vector3(0, -1, 0); 
+				currYaw = startAngle + sweep + (isLeft ? -Math.PI/2 : Math.PI/2);
+				seg.computedExitTangent = new THREE.Vector3(0, -1, 0);
 			}
+
+			seg._endCurveIdx = path.curves.length - 1;
 		});
 		return path;
 	}
+	function getSegmentExactPathBounds(segIdx) {
+		const seg = PARAMS.segments[segIdx];
+		if (!seg || seg._startCurveIdx === undefined || seg._endCurveIdx === undefined || !window.curveAccumLengths) {
+			return { startDist: 0, endDist: totalLen, pathLen: totalLen };
+		}
+		const startDist = window.curveAccumLengths[seg._startCurveIdx] || 0;
+		const endDist = window.curveAccumLengths[seg._endCurveIdx + 1] || totalLen;
+		const pathLen = Math.max(0.0001, endDist - startDist);
+		return { startDist, endDist, pathLen };
+	}
 	function buildCustomTube(targetIdx = -1) {
-		let currentDist = 0;
-		let lastTunnelSeed = null;
+		// FELBONTÁS BEOLVASÁSA AZ UI-RÓL (ALAPÉRTELMEZÉS: 100 LÉPÉS / MÉTER)
+		const turnResInput = document.getElementById('turnResolution');
+		const stepsPerMeter = turnResInput ? Math.max(20, parseFloat(turnResInput.value) || 100) : 100;
+
 		PARAMS.segments.forEach((seg, segIdx) => {
-			const segLen = (seg.type === 'straight') ? (seg.len || 0.1) : 
-						   (seg.type === 'space_bowl') ? (
-							   (() => {
-								   const bowlD = parseFloat(seg.bowlDiameter) || 8.0;
-								   const rotations = parseFloat(seg.rotations) || 2.0;
-								   const R_tube = (seg.diameter || 2.0) / 2;
-								   const R_start = (bowlD / 2) - R_tube * 1.25; 
-								   const avgR = R_start / 2;
-								   const sweep = Math.PI * 1 * rotations;
-								   const spiralLen = avgR * sweep;
-								   const dropLen = 0.1;
-								   return spiralLen + dropLen;
-							   })()
-						   ) :
-						   ((parseFloat(seg.radius) || 0.1) * (Math.abs(parseFloat(seg.angle)) * Math.PI / 180));
-			const segEnd = currentDist + segLen;
-			if (targetIdx !== -1 && segIdx !== targetIdx) {
-				currentDist = segEnd;
-				return;
-			}
+			if (targetIdx !== -1 && segIdx !== targetIdx) return;
+
+			const bounds = getSegmentExactPathBounds(segIdx);
+			const segStartDist = bounds.startDist;
+			const segEndDist = bounds.endDist;
+			const segPathLen = bounds.pathLen;
+
 			if (!segmentGroups[segIdx]) {
 				const grp = new THREE.Group();
 				grp.userData.lights = { starPoints: [], star2Points: [], starRingLeds: [], floorLights: [], centerTriangles: [], turnLeds: [], zigzagLeds: [] };
 				segmentGroups[segIdx] = grp;
 				slideGroup.add(grp);
 			}
-			if (seg.type === 'space_bowl') {
-				currentDist = segEnd;
-				lastTunnelSeed = null; 
-				return;
-			}
-			const radSegs = isMoonSlideActive ? 48 : 120;
-			const steps = Math.max(6, Math.floor(segLen * (isMoonSlideActive ? 8 : 15)));
+
+			if (seg.type === 'space_bowl') return;
+
+			// ULTRANAGY FELBONTÁS A TÖKÉLETESEN SIMA KANYAROKÉRT
+			const radSegs = 180; // Körkörös kerekítési pontosság (120-ról 180-ra növelve)
+			const steps = Math.max(32, Math.floor(segPathLen * stepsPerMeter)); // Akár 500-1000 szelet kanyaronként!
+
 			const vertsOut = [], vertsIn = [], indicesOut = [], indicesIn = [], colorsOut = [], colorsIn = [], uvsIn = [], uvsOut = [];
 			const cColor = new THREE.Color(seg.color || '#ffcc00');
+
 			for (let i = 0; i <= steps; i++) {
 				const t_seg = i / steps;
-				const dist = currentDist + t_seg * segLen;
-				const clampedDist = Math.max(0, Math.min(totalLen, dist));
+				const clampedDist = Math.max(0, Math.min(totalLen, segStartDist + t_seg * segPathLen));
+
+				const deltaSample = 0.01; // 1 cm-es ultrasima derivált mintavételezés
+				const pPrev = getPointAtDistance(Math.max(0, clampedDist - deltaSample));
+				const pNext = getPointAtDistance(Math.min(totalLen, clampedDist + deltaSample));
+				
 				const pos = getPointAtDistance(clampedDist);
-				const T = getTangentAtDistance(clampedDist);
+				const T = pNext.clone().sub(pPrev).normalize();
+
 				let B = new THREE.Vector3().crossVectors(T, worldUp).normalize();
 				if (B.lengthSq() < 0.0001) {
 					B = new THREE.Vector3().crossVectors(T, new THREE.Vector3(0, 0, 1)).normalize();
 				}
 				const N = new THREE.Vector3().crossVectors(B, T).normalize();
+
 				const props = getSlideProps(clampedDist, segIdx);
 				const isLazy = (props.shape1 === 'lazy' || props.shape2 === 'lazy');
 				const nominalR = props.diameter / 2;
 				const R_actual = isLazy ? 3.0 : nominalR;
 				const rOut = R_actual;
 				const rIn = R_actual - 0.015;
+
 				const colPrev = new THREE.Color(props.prevInner);
 				const colCurr = new THREE.Color(props.currInner);
 				const tempInColor = colPrev.clone().lerp(colCurr, props.t);
 				const intensity = props.prevInt * (1 - props.t) + props.currInt * props.t;
 				tempInColor.multiplyScalar(Math.min(1.0, Math.max(0.0, intensity)));
+
 				for (let j = 0; j <= radSegs; j++) {
 					const a = (j / radSegs) * Math.PI * 2;
 					const u = t_seg;
 					const v = j / radSegs;
 					uvsIn.push(u, v);
 					uvsOut.push(u, v);
+
 					let p1Out = getShapeXY(props.shape1, rOut, a, props.lanes1, nominalR);
 					let p2Out = getShapeXY(props.shape2, rOut, a, props.lanes2, nominalR);
 					let oxOut = p1Out.x * (1 - props.t) + p2Out.x * props.t;
 					let oyOut = p1Out.y * (1 - props.t) + p2Out.y * props.t;
+
 					let p1In = getShapeXY(props.shape1, rIn, a, props.lanes1, nominalR);
 					let p2In = getShapeXY(props.shape2, rIn, a, props.lanes2, nominalR);
 					let oxIn = p1In.x * (1 - props.t) + p2In.x * props.t;
 					let oyIn = p1In.y * (1 - props.t) + p2In.y * props.t;
+
 					vertsOut.push(pos.x + B.x * oxOut + N.x * oyOut, pos.y + B.y * oxOut + N.y * oyOut, pos.z + B.z * oxOut + N.z * oyOut);
 					colorsOut.push(cColor.r, cColor.g, cColor.b);
+
 					vertsIn.push(pos.x + B.x * oxIn + N.x * oyIn, pos.y + B.y * oxIn + N.y * oyIn, pos.z + B.z * oxIn + N.z * oyIn);
+
 					if (props.isOpen) colorsIn.push(cColor.r, cColor.g, cColor.b); 
 					else colorsIn.push(tempInColor.r, tempInColor.g, tempInColor.b); 
 				}
 			}
+
 			for (let i = 0; i < steps; i++) {
-				const dist = currentDist + (i + 0.5) / steps * segLen;
+				const dist = segStartDist + (i + 0.5) / steps * segPathLen;
 				const props = getSlideProps(dist, segIdx);
 				let isMulti = props.shape1 === 'multi' || props.shape2 === 'multi';
+
 				for (let j = 0; j < radSegs; j++) {
 					const a = (j / radSegs) * Math.PI * 2;
 					if (isMulti && a > 0.01 && a < Math.PI - 0.01) continue;
 					else if (props.isOpen && !isMulti && a > Math.PI/4 && a < 3*Math.PI/4) continue;
+
 					const row1 = i * (radSegs + 1);
 					const row2 = (i + 1) * (radSegs + 1);
 					const a_idx = row1 + j, b_idx = row2 + j, c_idx = row1 + (j + 1), d_idx = row2 + (j + 1);
+
 					indicesOut.push(a_idx, b_idx, c_idx);
 					indicesOut.push(b_idx, d_idx, c_idx);
 					indicesIn.push(a_idx, c_idx, b_idx);
 					indicesIn.push(b_idx, c_idx, d_idx);
 				}
 			}
+
 			const geoOut = new THREE.BufferGeometry();
 			geoOut.setAttribute('position', new THREE.Float32BufferAttribute(vertsOut, 3));
 			geoOut.setAttribute('color', new THREE.Float32BufferAttribute(colorsOut, 3));
 			geoOut.setAttribute('uv', new THREE.Float32BufferAttribute(uvsOut, 2));
 			geoOut.setIndex(indicesOut);
 			geoOut.computeVertexNormals();
+
 			const geoIn = new THREE.BufferGeometry();
 			geoIn.setAttribute('position', new THREE.Float32BufferAttribute(vertsIn, 3));
 			geoIn.setAttribute('color', new THREE.Float32BufferAttribute(colorsIn, 3));
 			geoIn.setAttribute('uv', new THREE.Float32BufferAttribute(uvsIn, 2));
 			geoIn.setIndex(indicesIn); 
 			geoIn.computeVertexNormals();
+
 			let segmentMatOut = seg.shape === 'open' ? openSlideMatOut : new THREE.MeshPhongMaterial({ vertexColors: true, side: THREE.FrontSide, shininess: 40 });
+
 			let segmentMatIn;
 			if (seg.shape === 'open') {
 				segmentMatIn = openSlideMatIn;
-				lastTunnelSeed = null; 
 			} else if (seg.light === 'custom_texture') {
-				lastTunnelSeed = null; 
 				const imgSource = seg.customTextureBase64 || "https://threejs.org/examples/textures/crate.gif";
 				const tex = new THREE.TextureLoader().load(imgSource);
+				
+				const maxAnisotropy = renderer.capabilities ? renderer.capabilities.getMaxAnisotropy() : 16;
+				tex.anisotropy = maxAnisotropy;
+				tex.minFilter = THREE.LinearMipmapLinearFilter;
+				tex.magFilter = THREE.LinearFilter;
+				tex.generateMipmaps = true;
+
 				tex.wrapS = THREE.ClampToEdgeWrapping;
 				tex.wrapT = THREE.ClampToEdgeWrapping;
 				tex.repeat.set(1, 1); 
 				tex.colorSpace = THREE.SRGBColorSpace; 
+				
 				segmentMatIn = new THREE.MeshBasicMaterial({ map: tex, color: 0xffffff, side: THREE.FrontSide });
 				segmentMatIn.userData = { alwaysGlow: seg.alwaysGlow === true };
 				customTextureMaterials.push(segmentMatIn);
 			} else if (seg.shape === 'lazy') {
-				lastTunnelSeed = null;
 				const canvas = document.createElement('canvas');
 				canvas.width = 512; canvas.height = 512;
 				const ctx = canvas.getContext('2d');
@@ -3480,116 +3549,58 @@
 				ctx.fillStyle = 'rgba(225, 245, 255, 0.08)'; 
 				ctx.fillRect(0, 0, 512, 256);
 				ctx.strokeStyle = 'rgba(40, 45, 50, 0.85)'; ctx.lineWidth = 3; 
-				for(let i = 0; i <= 512; i += 64) { 
-					ctx.beginPath(); ctx.moveTo(i, 0); ctx.lineTo(i, 256); ctx.stroke(); 
-				}
+				for(let i = 0; i <= 512; i += 64) { ctx.beginPath(); ctx.moveTo(i, 0); ctx.lineTo(i, 256); ctx.stroke(); }
 				ctx.beginPath(); ctx.moveTo(0, 256); ctx.lineTo(512, 256); ctx.stroke();
-				ctx.fillStyle = '#e0f7fa';
-				ctx.fillRect(0, 256, 512, 256);
+
+				ctx.fillStyle = '#e0f7fa'; ctx.fillRect(0, 256, 512, 256);
 				ctx.strokeStyle = '#00acc1'; ctx.lineWidth = 2;
 				for(let x = 0; x <= 512; x += 16) { ctx.beginPath(); ctx.moveTo(x, 256); ctx.lineTo(x, 512); ctx.stroke(); }
 				for(let y = 256; y <= 512; y += 16) { ctx.beginPath(); ctx.moveTo(0, y); ctx.lineTo(512, y); ctx.stroke(); }
+
 				const tex = new THREE.CanvasTexture(canvas);
 				tex.wrapS = tex.wrapT = THREE.RepeatWrapping;
-				tex.repeat.set(Math.ceil(segLen), 1);
+				tex.repeat.set(Math.ceil(segPathLen), 1);
 				tex.colorSpace = THREE.SRGBColorSpace;
-				segmentMatIn = new THREE.MeshPhongMaterial({ 
-					vertexColors: true, 
-					side: THREE.FrontSide, 
-					shininess: 0,        
-					specular: 0x000000   
-				});
+
+				segmentMatIn = new THREE.MeshPhongMaterial({ vertexColors: true, side: THREE.FrontSide, shininess: 0, specular: 0x000000 });
 				segmentMatOut = segmentMatIn; 
-			} else if (seg.light === 'strips') {
+			} else if (seg.light === 'strips' || seg.light === 'tunnel_rings' || seg.light === 'futuristic_tunnel') {
 				const pxPerMeter = 150;
 				const C = Math.PI * (seg.diameter || 2.0);
-				const canvasW = Math.max(256, Math.round(segLen * pxPerMeter));
+				const canvasW = Math.max(256, Math.round(segPathLen * pxPerMeter));
 				const canvasH = Math.max(256, Math.round(C * pxPerMeter));
-				const canvas = document.createElement('canvas');
-				canvas.width = canvasW;
-				canvas.height = canvasH;
-				const ctx = canvas.getContext('2d');
-				const tex = new THREE.CanvasTexture(canvas);
-				tex.wrapS = THREE.RepeatWrapping;
-				tex.wrapT = THREE.RepeatWrapping;
-				segmentMatIn = new THREE.MeshBasicMaterial({ map: tex, color: 0xffffff, side: THREE.FrontSide });				
-				if (lastTunnelSeed === null) {
-					lastTunnelSeed = Math.random() * 800;
-				}
-				tunnelDisplays.push({
-					canvas: canvas, ctx: ctx, texture: tex, width: canvasW, height: canvasH,
-					seed: lastTunnelSeed, diameter: seg.diameter || 2.0, len: segLen,
-					segmentGroup: segmentGroups[segIdx], isStrips: true
-				});
-			} else if (seg.light === 'rgb_rings') {
-				segmentMatIn = new THREE.MeshPhongMaterial({ 
-					color: new THREE.Color(seg.innerColor || '#000000'), 
-					shininess: 10, side: THREE.FrontSide 
-				});
-				lastTunnelSeed = null;
-			} else if (seg.light === 'tunnel_rings') {
-				const pxPerMeter = 150;
-				const C = Math.PI * (seg.diameter || 2.0);
-				const canvasW = Math.max(256, Math.round(segLen * pxPerMeter));
-				const canvasH = Math.max(256, Math.round(C * pxPerMeter));
+				
 				const canvas = document.createElement('canvas');
 				canvas.width = canvasW; canvas.height = canvasH;
 				const ctx = canvas.getContext('2d');
 				const tex = new THREE.CanvasTexture(canvas);
-				tex.wrapS = THREE.RepeatWrapping;
-				tex.wrapT = THREE.RepeatWrapping;
-				tex.repeat.set(1, 1);
+				tex.wrapS = THREE.RepeatWrapping; tex.wrapT = THREE.RepeatWrapping;
+				
 				segmentMatIn = new THREE.MeshBasicMaterial({ map: tex, color: 0xffffff, side: THREE.FrontSide });
-				if (lastTunnelSeed === null) {
-					lastTunnelSeed = Math.random() * 800;
-				}
+				let tunnelSeed = Math.random() * 800;
+
 				tunnelDisplays.push({
 					canvas: canvas, ctx: ctx, texture: tex, width: canvasW, height: canvasH,
-					seed: lastTunnelSeed, diameter: seg.diameter || 2.0, len: segLen,
-					segmentGroup: segmentGroups[segIdx], isRingsOnly: true, innerColor: seg.innerColor || '#000000'
-				});
-			} else if (seg.light === 'futuristic_tunnel') {
-				const pxPerMeter = 150;
-				const C = Math.PI * (seg.diameter || 2.0);
-				const canvasW = Math.max(256, Math.round(segLen * pxPerMeter));
-				const canvasH = Math.max(256, Math.round(C * pxPerMeter));
-				const canvas = document.createElement('canvas');
-				canvas.width = canvasW; canvas.height = canvasH;
-				const ctx = canvas.getContext('2d');
-				const tex = new THREE.CanvasTexture(canvas);
-				tex.wrapS = THREE.RepeatWrapping;
-				tex.wrapT = THREE.RepeatWrapping;
-				segmentMatIn = new THREE.MeshBasicMaterial({ map: tex, color: 0xffffff, side: THREE.FrontSide });
-				if (lastTunnelSeed === null) {
-					lastTunnelSeed = Math.random() * 800;
-				}
-				tunnelDisplays.push({
-					canvas: canvas, ctx: ctx, texture: tex, width: canvasW, height: canvasH,
-					seed: lastTunnelSeed, diameter: seg.diameter || 2.0, len: segLen, segmentGroup: segmentGroups[segIdx]
+					seed: tunnelSeed, diameter: seg.diameter || 2.0, len: segPathLen, segmentGroup: segmentGroups[segIdx],
+					isStrips: seg.light === 'strips', isRingsOnly: seg.light === 'tunnel_rings', innerColor: seg.innerColor || '#000000'
 				});
 			} else {
-				lastTunnelSeed = null; 
-				segmentMatIn = new THREE.MeshPhongMaterial({ 
-					vertexColors: true, 
-					side: THREE.FrontSide, 
-					shininess: 0,        
-					specular: 0x000000   
-				});
+				segmentMatIn = new THREE.MeshPhongMaterial({ vertexColors: true, side: THREE.FrontSide, shininess: 0, specular: 0x000000 });
 			}
+
 			const meshOut = new THREE.Mesh(geoOut, segmentMatOut);
 			const meshIn = new THREE.Mesh(geoIn, segmentMatIn);
 			meshOut.castShadow = true; meshOut.receiveShadow = true;
 			meshIn.castShadow = true; meshIn.receiveShadow = true;
+
 			if (segmentGroups[segIdx]) {
 				segmentGroups[segIdx].add(meshOut, meshIn);
 			} else {
 				slideGroup.add(meshOut, meshIn);
 			}
-			meshOut.matrixAutoUpdate = false;
-			meshIn.matrixAutoUpdate = false;
-			meshOut.updateMatrix();
-			meshIn.updateMatrix();
-			currentDist = segEnd;
+
+			meshOut.matrixAutoUpdate = false; meshIn.matrixAutoUpdate = false;
+			meshOut.updateMatrix(); meshIn.updateMatrix();
 		});
 	}
     const bgPositions = [];
