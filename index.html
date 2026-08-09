@@ -1252,29 +1252,23 @@
 	}
 	function updateProceduralMoonSlide() {
 		if (!isMoonSlideActive) return;
-
+		const currentDist = window.currentTravelDist || 0;
 		const globalDist = window.globalMoonMeter || 0;
-		const localDist = globalDist - (window.windowStartDist || 0);
-		const targetEndDist = window.TARGET_EARTH_DISTANCE || 750;
-
-		// 1. Célvonal elérése a Földi medencében
-		if (globalDist >= targetEndDist) {
-			window.globalMoonMeter = targetEndDist;
-			simulatedSpeed = Math.max(0, simulatedSpeed - 2.0 * (1/60));
+		if (globalDist >= window.TARGET_EARTH_DISTANCE + 8.0) {
+			window.globalMoonMeter = window.TARGET_EARTH_DISTANCE + 8.0;
+			simulatedSpeed = 0;
 			return;
 		}
-
-		// 2. ABLAK ELTOLÁS: Csak akkor tolunk el 120m-rel, ha még legalább 100m-re vagyunk a Földtől!
-		const SHIFT_INTERVAL = 120.0;
-		if (localDist >= SHIFT_INTERVAL && (globalDist + SHIFT_INTERVAL) < (targetEndDist - 100)) {
-			const newWindowStartDist = (window.windowStartDist || 0) + SHIFT_INTERVAL;
-			const newStartIdx = findMoonSegmentIndexAtMeter(newWindowStartDist);
-
-			// Felépítjük az új 3D ablakot
-			rebuildMoonLocalWindow(newStartIdx, newWindowStartDist);
-
-			// A helyi távolság frissítése (A globalMoonMeter VÁLTOZATLAN MARAD, NEM UGRHAT EL!)
-			window.currentTravelDist = window.globalMoonMeter - newWindowStartDist;
+		if (currentDist > 150 && globalDist < window.TARGET_EARTH_DISTANCE - 10) {
+			let shiftPathDist = 0;
+			const shiftCount = Math.min(20, window.segPathLengths ? window.segPathLengths.length : 20);
+			for (let i = 0; i < shiftCount; i++) {
+				shiftPathDist += window.segPathLengths[i] || 7.7955;
+			}
+			const nextStartIdx = (window.windowStartSegIdx || 0) + shiftCount;
+			const newWindowStartDist = window.windowStartDist + shiftPathDist;
+			rebuildMoonLocalWindow(nextStartIdx, newWindowStartDist);
+			window.currentTravelDist = currentDist - shiftPathDist;
 		}
 	}
 	function applyDeltaFrame(grid, deltaFrame) {
@@ -3619,7 +3613,7 @@
 				canvas.width = canvasW; canvas.height = canvasH;
 				const ctx = canvas.getContext('2d');
 				const tex = new THREE.CanvasTexture(canvas);
-				tex.wrapS = THREE.ClampToEdgeWrapping; tex.wrapT = THREE.ClampToEdgeWrapping;
+				tex.wrapS = THREE.RepeatWrapping; tex.wrapT = THREE.RepeatWrapping;
 				
 				segmentMatIn = new THREE.MeshBasicMaterial({ map: tex, color: 0xffffff, side: THREE.FrontSide });
 				let tunnelSeed = Math.random() * 800;
@@ -4099,7 +4093,7 @@
 				const starsPerRing = Math.floor((angleSpan * window.SLIDE_RAD) / cellLength); 
 				const angleStep = angleSpan / starsPerRing;
 				const jitterAmount = 0.8;
-				for (let d = segStartDist + 0.25; d <= segEndDist - 0.25; d += cellLength) {
+				for (let d = currentDist; d < segEnd; d += cellLength) {
 					for (let i = 0; i < starsPerRing; i++) {
 						const dOffset = (Math.random() - 0.5) * cellLength * jitterAmount;
 						const aOffset = (Math.random() - 0.5) * angleStep * jitterAmount;
@@ -4282,7 +4276,7 @@
 				const verts = [];
 				const indices = [];
 				let vertIdx = 0;
-				for (let d = segStartDist + 0.15; d <= segEndDist - 0.15; d += step) {
+				for (let d = currentDist; d <= segEnd; d += step) {
 					const centerAngle = (Math.PI / 2) + Math.sin(d * 6) * 0.22;
 					const leftAng = centerAngle - halfWidthAng;
 					const rightAng = centerAngle + halfWidthAng;
@@ -5481,10 +5475,7 @@
                         simulatedSpeed = Math.max(0.0, simulatedSpeed - moveDelta * 3.0);
                     }
                     window.globalMoonMeter += simulatedSpeed * moveDelta;
-
-                    const localDist = window.globalMoonMeter - (window.windowStartDist || 0);
-                    const maxAllowedLocalDist = Math.max(0.1, totalLen - 0.1);
-                    window.currentTravelDist = Math.min(maxAllowedLocalDist, Math.max(0, localDist));
+                    window.currentTravelDist = window.globalMoonMeter - (window.windowStartDist || 0);
                 } else {
                     window.globalMoonMeter = window.currentTravelDist;
                 }
