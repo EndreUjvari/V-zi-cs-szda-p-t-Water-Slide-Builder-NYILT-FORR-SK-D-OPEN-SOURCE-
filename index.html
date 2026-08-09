@@ -40,9 +40,9 @@
 			<button onclick="setLang('hu')" style="background: #cc0000; color: white; border: none; padding: 2px 8px; cursor: pointer; border-radius: 3px;">HU</button>
 			<button onclick="setLang('en')" style="background: #0000cc; color: white; border: none; padding: 2px 8px; cursor: pointer; border-radius: 3px;">EN</button>
 		</div>
-		<div>GRAFIKA/GRAPHICS</div>
+		<div>GRAFIKA/GRAPHICS:</div>
 		<label style="color:#00ff88; font-weight:bold; margin-top:10px; display:block;">Kanyar Ív Felbontása / Curve arc resolution:</label>
-		<input type="number" id="turnResolution" min="20" max="300" value="100" style="text-align:center;" onchange="rebuildSlide()">
+		<input type="number" id="turnResolution" min="1" max="100" value="35" style="text-align:center;" onchange="rebuildSlide()">
         <div class="param-group">
             <label data-tr="slideDiameter">Csúszda átmérő (m)</label>
             <input type="number" id="slideDiameter" step="0.1" value="2.0">
@@ -112,6 +112,13 @@
 		<button class="add-btn" style="background: linear-gradient(135deg, #4444ff, #8800ff); margin-top:5px; font-weight:bold;" onclick="startMoonToEarthSlide()" data-tr="procStartBtn">
 			PROCEDURÁLIS CSÚSZDA INDÍTÁSA
 		</button>
+		<div style="margin-top:10px; background:#112211; padding:8px; border-radius:4px; border:1px solid #00ff88;">
+			<label style="color:#00ff88; font-weight:bold; margin:0; font-size:11px;">Teleport:</label>
+			<div style="display:flex; gap:5px; margin-top:5px;">
+				<input type="number" id="teleportTargetMeter" value="0" min="0" step="10" style="flex:1; text-align:center; margin:0;" placeholder="Meter">
+				<button class="add-btn" style="background:#00ff88; color:#000; width:auto; padding:4px 12px; margin:0; font-weight:bold;" onclick="teleportToMeter()">TELEPORT</button>
+			</div>
+		</div>
 		<button class="add-btn" id="viewBtn" style="background:#444; margin-top:5px;" data-tr="viewBtn">Nézet: Belső</button>
 		<label style="display:inline-flex; align-items:center; cursor:pointer; color:#00ff88; margin-top: 10px; font-weight:bold;">
 			<input type="checkbox" id="autoPhysicsBtn" checked onchange="document.getElementById('moveSpeed').disabled = this.checked;" style="width:auto; margin-right:8px; margin-bottom:0; cursor:pointer;">
@@ -896,7 +903,10 @@
 		let currP = new THREE.Vector3(startState.x, startState.y, startState.z);
 		let currYaw = startState.yaw; 
 		let currY = startState.y;
-		segmentsList.forEach(seg => {
+
+		segmentsList.forEach((seg, segIdx) => {
+			seg._startCurveIdx = path.curves.length; // HIÁNYZÓ INDEX BEÁLLÍTÁSA (PONTOS POZÍCIÓHOZ)
+
 			const slope = seg.slope !== undefined ? seg.slope : 0.08;
 			if (seg.type === 'straight') {
 				const length = seg.len || 0.1;
@@ -913,28 +923,27 @@
 				const angleDeg = parseFloat(seg.angle) || 0;
 				const angleRad = (angleDeg * Math.PI) / 180;
 				if (angleDeg === 0) return;
+
 				const isLeft = (seg.dir === 'left');
 				const sweep = isLeft ? -angleRad : angleRad;
 				const centerAngle = currYaw + (isLeft ? -Math.PI/2 : Math.PI/2);
 				const center = new THREE.Vector3(currP.x + Math.cos(centerAngle) * radius, 0, currP.z + Math.sin(centerAngle) * radius);
 				const startAngle = Math.atan2(currP.z - center.z, currP.x - center.x);
+
 				const curveLen = radius * angleRad;
 				const nextY = currY - curveLen * slope;
-				const steps = Math.ceil(angleDeg / 5) + 5;
-				for (let i = 0; i < steps; i++) {
-					const a1 = startAngle + (i / steps) * sweep;
-					const a2 = startAngle + ((i + 1) / steps) * sweep;
-					const p1Y = currY + (nextY - currY) * (i / steps);
-					const p2Y = currY + (nextY - currY) * ((i + 1) / steps);
-					const p1 = new THREE.Vector3(center.x + Math.cos(a1) * radius, p1Y, center.z + Math.sin(a1) * radius);
-					const p2 = new THREE.Vector3(center.x + Math.cos(a2) * radius, p2Y, center.z + Math.sin(a2) * radius);
-					path.add(new THREE.LineCurve3(p1, p2));
-				}
+
+				// ANALITIKUS MATEMATIKAI KÖR ÍV A HOLDCSÚSZDÁHOZ IS
+				const turnCurve = new SlideTurnCurve(center, radius, startAngle, sweep, currY, nextY);
+				path.add(turnCurve);
+
 				currYaw += sweep;
-				const finalPoint = path.curves[path.curves.length - 1].v2;
-				currP.set(finalPoint.x, 0, finalPoint.z);
+				const finalPoint = turnCurve.getPoint(1);
+				currP.copy(finalPoint);
 				currY = nextY;
 			}
+
+			seg._endCurveIdx = path.curves.length - 1; // HIÁNYZÓ INDEX BEÁLLÍTÁSA
 		});
 		return path;
 	}
@@ -1073,17 +1082,16 @@
 			segmentBounds.push({ start: accum, end: segEnd, built: false, disposed: false });
 			accum = segEnd;
 		}
+
+		// PÁLYA ÉS ÍVHOSSZAK PRECÍZIÓS KISZÁMÍTÁSA
 		mainPath = createSlidePathFromState(localStartState, PARAMS.segments);
 		totalLen = mainPath.getLength();
 		prepareCurveLengths();
+
 		window.segPathLengths = [];
 		let curveIdx = 0;
 		PARAMS.segments.forEach(seg => {
-			let steps = 1;
-			if (seg.type === 'turn') {
-				const angleDeg = parseFloat(seg.angle) || 0;
-				steps = Math.ceil(angleDeg / 5) + 5;
-			}
+			let steps = 1; // Egyetlen folytonos analitikus görbe szegmensenként
 			let segLenOnPath = 0;
 			for (let s = 0; s < steps; s++) {
 				if (curveIdx < mainPath.curves.length) {
@@ -1093,6 +1101,8 @@
 			}
 			window.segPathLengths.push(segLenOnPath);
 		});
+
+		// 3D CSŐ ÉS DEKORÁCIÓK MEGÉPÍTÉSE (MOST MÁR PONTOSAN CSAK A SAJÁT SZAKASZÁT ÉPÍTI MINDENKI!)
 		PARAMS.segments.forEach((s, idx) => {
 			buildCustomTube(idx);
 			addDecorations(idx);
@@ -1100,6 +1110,7 @@
 				segmentBounds[idx].built = true;
 			}
 		});
+
 		if (startSegIdx + PARAMS.segments.length >= targetEndIdx) {
 			const endP = getPointAtDistance(totalLen);
 			const endT = getTangentAtDistance(totalLen);
@@ -1373,7 +1384,7 @@
 			timeMode: "Time mode", realTime: "Real time (PC clock)", fixedTime: "Fixed time", selectedLane: "Selected lane (Multi-lane)",
 			lightBleed: "Translucent wall (light bleed)", stats: "Statistics:", length: "Length:", heightDrop: "Height drop:",
 			addSegment: "+ Add new segment", rebuild: "UPDATE / BUILD", saveJson: "Save (JSON)", loadJson: "Load",
-			randBody: "GENERATE RANDOM BODY SLIDE", randTube: "GENERATE RANDOM TUBE SLIDE", speed: "Speed (m/s)",
+			randBody: "GENERATE RANDOM BODY SLIDE", randTube: "GENERATE RANDOM INNER TUBE SLIDE", speed: "Speed (m/s)",
 			randomLength: "Target length (m):", algTitle: "ALGORITHMIC EXTENSION", toEnd: "To the end", toStart: "To the start", genExt: "GENERATE EXTENSION",
 			viewInside: "View: Inside", viewOutside: "View: Outside",
 			camPause: "Pause Camera", camResume: "Resume Camera",
@@ -2562,6 +2573,7 @@
     renderer.setSize(window.innerWidth, window.innerHeight);
     document.body.appendChild(renderer.domElement);
 	window.addSegmentUI = function() {
+		isMoonSlideActive = false; // Manuális építésnél visszavált normál módra
 		const lastSeg = PARAMS.segments.length > 0 ? PARAMS.segments[PARAMS.segments.length - 1] : null;
 		if (lastSeg) {
 			PARAMS.segments.push({
@@ -3122,7 +3134,12 @@
 		slideGroup.add(towerMesh);
 	}
 	window.rebuildSlide = function() {
-		isMoonSlideActive = false; 
+		// HA PROCEDURÁLIS MÓDBAN VAGYUNK: Megőrizzük a procedurális állapotot, és frissítjük az ablakot!
+		if (isMoonSlideActive) {
+			rebuildMoonLocalWindow(window.windowStartSegIdx || 0, window.windowStartDist || 0);
+			return;
+		}
+
 		clearSlideGroup();  
 		const straightOnlyLights = ['center_tris', 'water_curtain', 'text'];
 		const turnOnlyLights = ['turn_circles', 'turn_droplets', 'blacklight'];
@@ -3135,6 +3152,7 @@
 		});
 		window.globalRingCount = 0;
 		if (PARAMS.segments.length > 0) window.SLIDE_RAD = PARAMS.segments[0].diameter / 2; 
+
 		slideGroup.traverse(child => {
 			if (child.isMesh) {
 				if (child.geometry) child.geometry.dispose();
@@ -3151,10 +3169,12 @@
 				}
 			}
 		});
+
 		scene.remove(slideGroup);
 		slideGroup = new THREE.Group();
 		segmentGroups = [];
 		segmentBounds = [];
+
 		allRings = [];
 		starPoints.length = 0; 
 		floorLights.length = 0; 
@@ -3176,14 +3196,18 @@
 		sharedLedMaterials = {};
 		activeSharedLeds = [];
 		starRingLeds.length = 0;
+
 		whiteDotsGroup.traverse(child => { if (child.geometry) child.geometry.dispose(); });
 		whiteDotsGroup = new THREE.Group();
 		slideGroup.add(whiteDotsGroup);
+
 		mainPath = createSlidePath();
 		totalLen = mainPath.getLength();
 		if (totalLen <= 0) return;
 		prepareCurveLengths();
+
 		frames = mainPath.computeFrenetFrames(Math.max(200, Math.floor(totalLen * 15)), true);
+
 		let accumDist = 0;
 		let lastSeed = null;
 		PARAMS.segments.forEach((seg, i) => {
@@ -3194,12 +3218,14 @@
 			};
 			segmentGroups.push(grp);
 			slideGroup.add(grp);
+
 			if (seg.light === 'strips' || seg.light === 'tunnel_rings' || seg.light === 'futuristic_tunnel') {
 				if (lastSeed === null) lastSeed = Math.random() * 800;
 			} else {
 				lastSeed = null;
 			}
 			seg.tunnelSeed = lastSeed;
+
 			const segLen = (seg.type === 'straight') ? (seg.len || 0.1) : 
 			               (seg.type === 'space_bowl') ? (
 			                   (() => {
@@ -3216,15 +3242,19 @@
 			               ) :
 			               ((parseFloat(seg.radius) || 0.1) * (Math.abs(parseFloat(seg.angle)) * Math.PI / 180));
 			const segEnd = accumDist + segLen;
+
 			segmentBounds.push({ 
 				start: accumDist, 
 				end: segEnd,
 				centerPos: mainPath.getPointAt(Math.min(1.0, Math.max(0, (accumDist + segEnd) / 2 / totalLen))),
 				built: false
 			});
+
 			accumDist = segEnd;
 		});
+
 		addStartAndEndElements();
+
 		for (let i = 0; i < PARAMS.segments.length; i++) {
 			if (segmentBounds[i].start <= 80) {
 				buildCustomTube(i);
@@ -3232,7 +3262,9 @@
 				segmentBounds[i].built = true;
 			}
 		}
+
 		scene.add(slideGroup);
+
 		progress = 0; 
 		window.currentTravelDist = 0;
 		simulatedSpeed = 1.5;
@@ -3240,6 +3272,7 @@
 		timerRunning = false;
 		slideBuildTime = clock ? clock.getElapsedTime() : 0;
 		if (timerDisplay) timerDisplay.innerText = "00:00.00";
+
 		document.getElementById('lengthVal').innerText = totalLen.toFixed(2);
 		let totalDrop = 0; 
 		PARAMS.segments.forEach(s => {
@@ -3247,7 +3280,9 @@
 			totalDrop += l * (s.slope || 0.06);
 		});
 		document.getElementById('heightVal').innerText = totalDrop.toFixed(2);
+
 		if (window.backgroundBuildTimer) clearTimeout(window.backgroundBuildTimer);
+
 		let segToBuildIdx = 0;
 		function buildNextBackgroundChunk() {
 			const startTime = performance.now();
@@ -3259,10 +3294,12 @@
 				}
 				segToBuildIdx++;
 			}
+
 			if (segToBuildIdx < PARAMS.segments.length) {
 				window.backgroundBuildTimer = setTimeout(buildNextBackgroundChunk, 8);
 			}
 		}
+
 		window.backgroundBuildTimer = setTimeout(buildNextBackgroundChunk, 10);
 	};
 	window.saveTrack = function() {
@@ -3282,6 +3319,7 @@
 			try {
 				const loadedParams = JSON.parse(e.target.result);
 				if (loadedParams.segments) {
+					isMoonSlideActive = false; // Betöltéskor visszavált normál módra
 					PARAMS = loadedParams;
 					document.getElementById('allowLightBleed').checked = PARAMS.allowLightBleed !== false;
 					document.getElementById('slideDiameter').value = PARAMS.slideDiameter || 2;
@@ -3398,9 +3436,12 @@
 		return { startDist, endDist, pathLen };
 	}
 	function buildCustomTube(targetIdx = -1) {
-		// FELBONTÁS BEOLVASÁSA AZ UI-RÓL (ALAPÉRTELMEZÉS: 100 LÉPÉS / MÉTER)
 		const turnResInput = document.getElementById('turnResolution');
-		const stepsPerMeter = turnResInput ? Math.max(20, parseFloat(turnResInput.value) || 100) : 100;
+		const userSteps = turnResInput ? Math.max(20, parseFloat(turnResInput.value) || 80) : 80;
+
+		// PROCEDURÁLIS HOLDCSÚSZDÁNÁL OPTIMALIZÁLT SŰRŰSÉG A FAGYÁS ELKERÜLÉSÉRE
+		const stepsPerMeter = isMoonSlideActive ? 8 : userSteps;
+		const radSegs = isMoonSlideActive ? 48 : 180; 
 
 		PARAMS.segments.forEach((seg, segIdx) => {
 			if (targetIdx !== -1 && segIdx !== targetIdx) return;
@@ -3419,9 +3460,7 @@
 
 			if (seg.type === 'space_bowl') return;
 
-			// ULTRANAGY FELBONTÁS A TÖKÉLETESEN SIMA KANYAROKÉRT
-			const radSegs = 180; // Körkörös kerekítési pontosság (120-ról 180-ra növelve)
-			const steps = Math.max(32, Math.floor(segPathLen * stepsPerMeter)); // Akár 500-1000 szelet kanyaronként!
+			const steps = Math.max(isMoonSlideActive ? 12 : 32, Math.floor(segPathLen * stepsPerMeter));
 
 			const vertsOut = [], vertsIn = [], indicesOut = [], indicesIn = [], colorsOut = [], colorsIn = [], uvsIn = [], uvsOut = [];
 			const cColor = new THREE.Color(seg.color || '#ffcc00');
@@ -3430,7 +3469,7 @@
 				const t_seg = i / steps;
 				const clampedDist = Math.max(0, Math.min(totalLen, segStartDist + t_seg * segPathLen));
 
-				const deltaSample = 0.01; // 1 cm-es ultrasima derivált mintavételezés
+				const deltaSample = 0.01;
 				const pPrev = getPointAtDistance(Math.max(0, clampedDist - deltaSample));
 				const pNext = getPointAtDistance(Math.min(totalLen, clampedDist + deltaSample));
 				
@@ -3585,7 +3624,10 @@
 					isStrips: seg.light === 'strips', isRingsOnly: seg.light === 'tunnel_rings', innerColor: seg.innerColor || '#000000'
 				});
 			} else {
-				segmentMatIn = new THREE.MeshPhongMaterial({ vertexColors: true, side: THREE.FrontSide, shininess: 0, specular: 0x000000 });
+				segmentMatIn = new THREE.MeshLambertMaterial({ 
+					vertexColors: true, 
+					side: THREE.FrontSide 
+				});
 			}
 
 			const meshOut = new THREE.Mesh(geoOut, segmentMatOut);
