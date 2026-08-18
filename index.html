@@ -634,6 +634,43 @@
 		}
 		return 0.0;
 	}
+	window.activeMilestone = null;
+
+	function checkMilestones(dist) {
+		let ms = null;
+		if (dist >= 9223372036854775807) {
+			ms = { id: 'int64', title: '🌌 64-BIT MULTIVERSE EDGE (9.22 EXA-METERS)', color: '#ffcc00' };
+		} else if (dist >= 9007199254740991) {
+			ms = { id: 'safe_int', title: '⚛ QUANTUM SAFE BOUNDARY (9.00 PETA-METERS)', color: '#ff00ff' };
+		} else if (dist >= 2147483647) {
+			ms = { id: 'int32', title: '👾 32-BIT OVERFLOW MATRIX GLITCH (2.14 GIGA-METERS)', color: '#00ff66' };
+		} else if (dist >= 384400000) {
+			ms = { id: 'moon', title: '🌕 MOON ORBIT REACHED (384,400 KM)', color: '#00b0ff' };
+		}
+
+		if (ms && (!window.activeMilestone || window.activeMilestone.id !== ms.id)) {
+			window.activeMilestone = ms;
+			triggerMilestoneEvent(ms);
+		}
+	}
+
+	function triggerMilestoneEvent(ms) {
+		window.lightningIntensity = 1.0;
+		playComplexRumble();
+
+		const banner = document.getElementById('milestoneBanner');
+		if (banner) {
+			banner.innerText = ms.title;
+			banner.style.color = ms.color;
+			banner.style.borderColor = ms.color;
+			banner.style.textShadow = `0 0 15px ${ms.color}`;
+			banner.style.display = 'block';
+
+			setTimeout(() => {
+				banner.style.display = 'none';
+			}, 6000);
+		}
+	}
 	window.updateMoonSeed = function() {
 		const inputEl = document.getElementById('moonSeedInput');
 		if (inputEl) {
@@ -905,7 +942,7 @@
 		let currY = startState.y;
 
 		segmentsList.forEach((seg, segIdx) => {
-			seg._startCurveIdx = path.curves.length; // HIÁNYZÓ INDEX BEÁLLÍTÁSA (PONTOS POZÍCIÓHOZ)
+			seg._startCurveIdx = path.curves.length;
 
 			const slope = seg.slope !== undefined ? seg.slope : 0.08;
 			if (seg.type === 'straight') {
@@ -932,8 +969,7 @@
 
 				const curveLen = radius * angleRad;
 				const nextY = currY - curveLen * slope;
-
-				// ANALITIKUS MATEMATIKAI KÖR ÍV A HOLDCSÚSZDÁHOZ IS
+				
 				const turnCurve = new SlideTurnCurve(center, radius, startAngle, sweep, currY, nextY);
 				path.add(turnCurve);
 
@@ -943,7 +979,7 @@
 				currY = nextY;
 			}
 
-			seg._endCurveIdx = path.curves.length - 1; // HIÁNYZÓ INDEX BEÁLLÍTÁSA
+			seg._endCurveIdx = path.curves.length - 1;
 		});
 		return path;
 	}
@@ -1083,7 +1119,6 @@
 			accum = segEnd;
 		}
 
-		// PÁLYA ÉS ÍVHOSSZAK PRECÍZIÓS KISZÁMÍTÁSA
 		mainPath = createSlidePathFromState(localStartState, PARAMS.segments);
 		totalLen = mainPath.getLength();
 		prepareCurveLengths();
@@ -1091,7 +1126,7 @@
 		window.segPathLengths = [];
 		let curveIdx = 0;
 		PARAMS.segments.forEach(seg => {
-			let steps = 1; // Egyetlen folytonos analitikus görbe szegmensenként
+			let steps = 1;
 			let segLenOnPath = 0;
 			for (let s = 0; s < steps; s++) {
 				if (curveIdx < mainPath.curves.length) {
@@ -1102,7 +1137,6 @@
 			window.segPathLengths.push(segLenOnPath);
 		});
 
-		// 3D CSŐ ÉS DEKORÁCIÓK MEGÉPÍTÉSE (MOST MÁR PONTOSAN CSAK A SAJÁT SZAKASZÁT ÉPÍTI MINDENKI!)
 		PARAMS.segments.forEach((s, idx) => {
 			buildCustomTube(idx);
 			addDecorations(idx);
@@ -2486,6 +2520,27 @@
 		gain.connect(audioCtx.destination);
 		osc.start(); osc.stop(audioCtx.currentTime + 1.5);
 	}
+	function createLightningShape() {
+        const shape = new THREE.Shape();
+        shape.moveTo(-1.5, 0.0);
+        shape.lineTo(-0.8, 0.15);
+        shape.lineTo(-0.9, -0.05);
+        shape.lineTo(-0.2, 0.2);
+        shape.lineTo(-0.4, 0.0);
+        shape.lineTo(0.5, 0.25);
+        shape.lineTo(0.2, -0.1);
+        shape.lineTo(1.5, -0.05);
+        shape.lineTo(0.3, -0.25);
+        shape.lineTo(0.6, 0.1);
+        shape.lineTo(-0.3, -0.2);
+        shape.lineTo(-0.1, 0.0);
+        shape.lineTo(-0.8, -0.15);
+        shape.lineTo(-0.7, 0.05);
+        shape.lineTo(-1.5, 0.0);
+
+        return new THREE.ShapeGeometry(shape);
+    }
+    const lightningGeoPre = createLightningShape();
     function createDropletShape(w, h) {
         const shape = new THREE.Shape();
         shape.moveTo(0, h);
@@ -2573,7 +2628,7 @@
     renderer.setSize(window.innerWidth, window.innerHeight);
     document.body.appendChild(renderer.domElement);
 	window.addSegmentUI = function() {
-		isMoonSlideActive = false; // Manuális építésnél visszavált normál módra
+		isMoonSlideActive = false;
 		const lastSeg = PARAMS.segments.length > 0 ? PARAMS.segments[PARAMS.segments.length - 1] : null;
 		if (lastSeg) {
 			PARAMS.segments.push({
@@ -2644,6 +2699,17 @@
 		const reader = new FileReader();
 		reader.onload = function(e) {
 			PARAMS.segments[idx].waterCustomCode = e.target.result;
+			renderUI();
+			rebuildSlide();
+		};
+		reader.readAsText(file);
+	};
+	window.loadRingCustomJson = function(idx, input) {
+		const file = input.files[0];
+		if (!file) return;
+		const reader = new FileReader();
+		reader.onload = function(e) {
+			PARAMS.segments[idx].ringCustomCode = e.target.result;
 			renderUI();
 			rebuildSlide();
 		};
@@ -2816,6 +2882,13 @@
 						<label style="color:#00ff88; font-weight:bold; margin-top:10px; display:block;">Saját Projektor Animáció (.json)</label>
 						<input type="file" accept=".json" onchange="loadWaterCustomJson(${i}, this)" style="font-size:11px; margin-top:5px; width:100%;">
 						${seg.waterCustomCode ? `<span style="color:#28a745; font-size:11px; display:block; margin-top:3px;">✓ Fájl sikeresen betöltve (${Math.round(seg.waterCustomCode.length / 1024)} KB)</span>` : `<span style="color:#aaa; font-size:11px; display:block; margin-top:3px;">Nincs animáció betöltve</span>`}
+					</div>
+				` : ''}
+				${seg.light === 'rings' ? `
+					<div style="background:#222; padding:8px; margin-top:5px; border:1px solid #555; border-radius:4px;">
+						<label style="color:#00ff88; font-weight:bold; display:block;">Saját LED Animáció (.json)</label>
+						<input type="file" accept=".json" onchange="loadRingCustomJson(${i}, this)" style="font-size:11px; margin-top:5px; width:100%;">
+						${seg.ringCustomCode ? `<span style="color:#28a745; font-size:11px; display:block; margin-top:3px;">✓ Fájl sikeresen betöltve (${Math.round(seg.ringCustomCode.length / 1024)} KB)</span>` : `<span style="color:#aaa; font-size:11px; display:block; margin-top:3px;">Nincs egyedi animáció (Alapértelmezett fut)</span>`}
 					</div>
 				` : ''}
 				${seg.type === 'straight' ? 
@@ -3134,8 +3207,7 @@
 		slideGroup.add(towerMesh);
 	}
 	window.rebuildSlide = function() {
-		// HA PROCEDURÁLIS MÓDBAN VAGYUNK: Megőrizzük a procedurális állapotot, és frissítjük az ablakot!
-		if (isMoonSlideActive) {
+			if (isMoonSlideActive) {
 			rebuildMoonLocalWindow(window.windowStartSegIdx || 0, window.windowStartDist || 0);
 			return;
 		}
@@ -3319,7 +3391,7 @@
 			try {
 				const loadedParams = JSON.parse(e.target.result);
 				if (loadedParams.segments) {
-					isMoonSlideActive = false; // Betöltéskor visszavált normál módra
+					isMoonSlideActive = false;
 					PARAMS = loadedParams;
 					document.getElementById('allowLightBleed').checked = PARAMS.allowLightBleed !== false;
 					document.getElementById('slideDiameter').value = PARAMS.slideDiameter || 2;
@@ -3372,8 +3444,7 @@
 
 				const curveLen = radius * angleRad;
 				const nextY = currY - curveLen * slope;
-
-				// SOKSZÖG LÁNC HELYETT EGYETLEN TÖKÉLETES MATEMATIKAI KÖR ÍV!
+				
 				const turnCurve = new SlideTurnCurve(center, radius, startAngle, sweep, currY, nextY);
 				path.add(turnCurve);
 
@@ -3403,8 +3474,6 @@
 				seg.computedRStart = R_start;
 				seg.computedStartPos = new THREE.Vector3(currP.x, currY, currP.z);
 				seg.computedStartTangent = new THREE.Vector3(Math.cos(currYaw), -slope, Math.sin(currYaw)).normalize();
-
-				// MATEMATIKAI TÖKÉLETES SPIRÁL GÖRBE A TÁLHOZ
 				const spiralCurve = new SlideSpiralCurve(center, R_start, R_exit, startAngle, sweep, currY, center.y);
 				path.add(spiralCurve);
 
@@ -3438,8 +3507,6 @@
 	function buildCustomTube(targetIdx = -1) {
 		const turnResInput = document.getElementById('turnResolution');
 		const userSteps = turnResInput ? Math.max(20, parseFloat(turnResInput.value) || 80) : 80;
-
-		// PROCEDURÁLIS HOLDCSÚSZDÁNÁL OPTIMALIZÁLT SŰRŰSÉG A FAGYÁS ELKERÜLÉSÉRE
 		const stepsPerMeter = isMoonSlideActive ? 8 : userSteps;
 		const radSegs = isMoonSlideActive ? 48 : 180; 
 
@@ -3696,6 +3763,7 @@
 			ledGroup.push(led);
 		}
 		ledGroup.ringIndex = window.globalRingCount++;
+		
 		if (segmentGroups[segIdx]) {
 			if (!segmentGroups[segIdx].userData.rings) segmentGroups[segIdx].userData.rings = [];
 			segmentGroups[segIdx].userData.rings.push(ledGroup);
@@ -3754,6 +3822,16 @@
                 currentDist = segEnd;
                 return;
             }
+
+			if (seg.ringCustomCode) {
+				targetGrp.userData.ringAnimState = {
+					customCode: (()=>{ try{ return JSON.parse(seg.ringCustomCode); }catch(e){return null;} })(),
+					customAccumulator: 0,
+					customFrameIdx: 0,
+					customGridState: null
+				};
+			}
+
 			if (seg.light === 'rings') {
 				const segD = seg.diameter || 2.0;
 				if (segD < 1.8) {
@@ -3798,6 +3876,8 @@
 								currAngle += solidRad + gapRad;
 							}
 							allRings.push(ledGroup);
+							if (!targetGrp.userData.rings) targetGrp.userData.rings = [];
+							targetGrp.userData.rings.push(ledGroup);
 						}
 					} else {
 						const wraps = Math.max(1, Math.round((segLen / OCTANT_LEN) * 6));
@@ -3846,6 +3926,8 @@
 								currT += solidT + gapT;
 							}
 							allRings.push(ledGroup);
+							if (!targetGrp.userData.rings) targetGrp.userData.rings = [];
+							targetGrp.userData.rings.push(ledGroup);
 						}
 					}
 				}
@@ -4078,6 +4160,8 @@
 							currAngle += solidRad + gapRad;
 						}
 						allRings.push(ledGroup);
+						if (!targetGrp.userData.rings) targetGrp.userData.rings = [];
+						targetGrp.userData.rings.push(ledGroup);
 						const dHalf = d + distStep / 2;
 						if (dHalf < segEnd) {
 							createCustomStarDisplay(dHalf, 0, 5, false);
@@ -4529,22 +4613,87 @@
 				}
 			}
 			else if (seg.light === 'jumpscare') {
-				const triggerDist = currentDist + segLen / 2;
-				const dotGeo = new THREE.CircleGeometry(0.02, 16);
-				const dotMat = new THREE.MeshBasicMaterial({ color: 0xffffff, side: THREE.DoubleSide });
-				[-2.4, 2.4].forEach(ang => {
-					const p = getPointOnSlide(triggerDist, ang, 0.005);
-					const dot = new THREE.Mesh(dotGeo, dotMat);
-					dot.position.copy(p);
-					const centerPos = getPointOnSlide(triggerDist, ang, R);
-					dot.lookAt(centerPos);
-					slideGroup.add(dot);
+				const delayMeters = Math.min(3.0, segLen * 0.3); // Pl. 3 méter "csend", mielőtt beüt
+				
+				const length = Math.max(2.0, segLen - delayMeters);
+				
+				const lightningCenterDist = currentDist + delayMeters + (length / 2);
+				const triggerDist = currentDist + delayMeters; 
+
+				const props = getSlideProps(lightningCenterDist);
+				const R = (props.diameter / 2);
+
+				const canvas = document.createElement('canvas');
+				canvas.width = Math.max(1024, Math.floor(length * 150)); 
+				canvas.height = 512; 
+				const ctx = canvas.getContext('2d');
+				const tex = new THREE.CanvasTexture(canvas);
+				tex.wrapS = THREE.ClampToEdgeWrapping;
+				tex.wrapT = THREE.ClampToEdgeWrapping;
+
+				const jumpMat = new THREE.MeshBasicMaterial({ 
+					map: tex,
+					transparent: true, 
+					opacity: 0.0, 
+					side: THREE.DoubleSide,
+					blending: THREE.AdditiveBlending,
+					depthWrite: false
 				});
-				jumpscares.push({ dist: triggerDist, triggered: false });
+				const planeGeo = new THREE.PlaneGeometry(length, R * Math.PI, Math.floor(length * 2), 16);
+				const bentGeo = bendGeometryToSlide(planeGeo, lightningCenterDist, Math.PI / 2, 0.035);
+				
+				const boltMesh = new THREE.Mesh(bentGeo, jumpMat);
+				slideGroup.add(boltMesh);
+
+				const generateRealisticLightning = () => {
+					ctx.clearRect(0, 0, canvas.width, canvas.height);
+					ctx.lineCap = 'round';
+					ctx.lineJoin = 'round';
+					ctx.shadowBlur = 25; 
+					ctx.shadowColor = '#aaeeff'; 
+
+					function drawBolt(x1, y1, x2, y2, displace, thickness) {
+						if (displace < 3) {
+							ctx.beginPath(); ctx.moveTo(x1, y1); ctx.lineTo(x2, y2);
+							ctx.lineWidth = thickness; ctx.strokeStyle = '#ffffff'; ctx.stroke();
+							return;
+						}
+						const midX = (x1 + x2) / 2 + (Math.random() - 0.5) * displace;
+						const midY = (y1 + y2) / 2 + (Math.random() - 0.5) * displace;
+
+						drawBolt(x1, y1, midX, midY, displace / 2, thickness);
+						drawBolt(midX, midY, x2, y2, displace / 2, thickness);
+
+						if (Math.random() < 0.35) {
+							const angle = Math.atan2(y2 - y1, x2 - x1) + (Math.random() - 0.5) * 1.5;
+							const len = displace * (0.5 + Math.random() * 0.8);
+							const bx = midX + Math.cos(angle) * len;
+							const by = midY + Math.sin(angle) * len;
+							drawBolt(midX, midY, bx, by, displace / 2, thickness * 0.6);
+						}
+					}
+
+					const numBolts = 2 + Math.floor(Math.random() * 3);
+					for(let i = 0; i < numBolts; i++) {
+						const sx = 0;
+						const sy = Math.random() * canvas.height;
+						const ex = canvas.width;
+						const ey = Math.random() * canvas.height;
+						drawBolt(sx, sy, ex, ey, canvas.width * 0.20, 4.0);
+					}
+					tex.needsUpdate = true;
+				};
+
+				jumpscares.push({ 
+					dist: triggerDist, 
+					length: length,
+					triggered: false, 
+					material: jumpMat,
+					generate: generateRealisticLightning
+				});
 			}
 			else if (seg.light === 'blacklight' && seg.type === 'turn') {
 				const R = window.SLIDE_RAD;
-				const dCenter = currentDist + segLen / 2;
 				const outerAngle = seg.dir === 'left' ? 0 : Math.PI;
 				const innerAngle = seg.dir === 'left' ? Math.PI : 0;
 				const texUrl = seg.customTextureBase64 || "https://threejs.org/examples/textures/sprites/spark1.png";
@@ -4558,10 +4707,60 @@
 					blending: THREE.AdditiveBlending, 
 					side: THREE.DoubleSide
 				});
-				const segmentsX = Math.max(16, Math.ceil(segLen * 4));
-				const planeGeo = new THREE.PlaneGeometry(segLen, R * 1.5, segmentsX, 16); 
-				const bentPlane = bendGeometryToSlide(planeGeo, dCenter, outerAngle, 0.015);
-				slideGroup.add(new THREE.Mesh(bentPlane, motifMat));
+                
+				const segmentsZ = Math.max(16, Math.ceil(segLen * 6));
+				const segmentsA = 16;
+				const widthAngle = Math.PI / 2.5;
+				const verts = [], uvs = [], indices = [];
+				
+				for(let i=0; i<=segmentsZ; i++) {
+					const t = i / segmentsZ;
+					const d = currentDist + t * segLen;
+					const pCenter = getPointAtDistance(d);
+					const T = getTangentAtDistance(d);
+					const worldUp = new THREE.Vector3(0,1,0);
+					let B = new THREE.Vector3().crossVectors(T, worldUp).normalize();
+					if(B.lengthSq() < 0.0001) B = new THREE.Vector3().crossVectors(T, new THREE.Vector3(0,0,1)).normalize();
+					const N = new THREE.Vector3().crossVectors(B, T).normalize();
+
+					for(let j=0; j<=segmentsA; j++) {
+						const u = j / segmentsA;
+						const angle = outerAngle - (widthAngle/2) + (u * widthAngle);
+						
+						const props = getSlideProps(d);
+						const r = (props.diameter / 2) - 0.015;
+						
+						const lx = Math.cos(angle) * r;
+						const ly = Math.sin(angle) * r;
+						
+						const px = pCenter.x + B.x * lx + N.x * ly;
+						const py = pCenter.y + B.y * lx + N.y * ly;
+						const pz = pCenter.z + B.z * lx + N.z * ly;
+						
+						verts.push(px, py, pz);
+						uvs.push(u, t);
+					}
+				}
+
+				for(let i=0; i<segmentsZ; i++) {
+					for(let j=0; j<segmentsA; j++) {
+						const a = i * (segmentsA + 1) + j;
+						const b = (i + 1) * (segmentsA + 1) + j;
+						const c = i * (segmentsA + 1) + (j + 1);
+						const d_idx = (i + 1) * (segmentsA + 1) + (j + 1);
+						indices.push(a, b, c);
+						indices.push(b, d_idx, c);
+					}
+				}
+
+				const curvedGeo = new THREE.BufferGeometry();
+				curvedGeo.setAttribute('position', new THREE.Float32BufferAttribute(verts, 3));
+				curvedGeo.setAttribute('uv', new THREE.Float32BufferAttribute(uvs, 2));
+				curvedGeo.setIndex(indices);
+				curvedGeo.computeVertexNormals();
+
+				slideGroup.add(new THREE.Mesh(curvedGeo, motifMat));
+
 				const uvLampMat = new THREE.MeshBasicMaterial({ color: 0x5500ff }); 
 				const lampLen = 1.0; 
 				const lampWidth = 0.1; 
@@ -4954,25 +5153,73 @@
 	function updateLedAnimation(delta) {
 		if (!allRings || allRings.length === 0) return;
 		window.activeRings = [];
-		for (let r = 0; r < allRings.length; r++) {
-			const ring = allRings[r];
-			if (ring && ring[0] && ring[0].parent && ring[0].parent.visible) {
-				window.activeRings.push(ring);
+		
+		for (let g = 0; g < segmentGroups.length; g++) {
+			const grp = segmentGroups[g];
+			if (!grp || !grp.visible || !grp.userData.rings) continue;
+			
+			if (grp.userData.ringAnimState && grp.userData.ringAnimState.customCode) {
+				const animState = grp.userData.ringAnimState;
+				const code = animState.customCode;
+				if (code && code.frames) {
+					const frameDuration = 1 / (code.fps || 10);
+					animState.customAccumulator += delta;
+					
+					if (animState.customAccumulator >= frameDuration) {
+						const framesToAdvance = Math.floor(animState.customAccumulator / frameDuration);
+						animState.customAccumulator %= frameDuration;
+						const oldIdx = animState.customFrameIdx || 0;
+						animState.customFrameIdx = (oldIdx + framesToAdvance) % code.frames.length;
+						
+						const w = code.width || 32;
+						const h = code.height || grp.userData.rings.length;
+						
+						if (!animState.customGridState || animState.customFrameIdx < oldIdx) {
+							animState.customGridState = Array(h).fill(0).map(() => Array(w).fill(0.0));
+							for (let f = 0; f <= animState.customFrameIdx; f++) applyDeltaFrame(animState.customGridState, code.frames[f]);
+						} else {
+							for (let f = oldIdx + 1; f <= animState.customFrameIdx; f++) applyDeltaFrame(animState.customGridState, code.frames[f]);
+						}
+						
+						for (let r = 0; r < grp.userData.rings.length; r++) {
+							const ring = grp.userData.rings[r];
+							for (let l = 0; l < ring.length; l++) {
+								if (ring[l]) {
+									ring[l].visible = (animState.customGridState[r % h][l % w] > 0.5);
+								}
+							}
+							replicateRing32Pattern(ring);
+						}
+					}
+				}
+			} else {
+				for (let r = 0; r < grp.userData.rings.length; r++) {
+					const ring = grp.userData.rings[r];
+					if (ring && ring[0] && ring[0].parent && ring[0].parent.visible) {
+						window.activeRings.push(ring);
+					}
+				}
 			}
 		}
+
 		if (window.isAudioEnabled && slideAudio && slideAudio.isPlaying) {
 			slideAudio.driveLedsWithMusic();
-			for (let r = 0; r < allRings.length; r++) {
-				replicateRing32Pattern(allRings[r]);
+			for (let r = 0; r < window.activeRings.length; r++) {
+				replicateRing32Pattern(window.activeRings[r]);
 			}
 			return;
 		}
 		if (window.activeRings.length === 0) return;
+        
 		const slowDelta = delta * 0.50;
 		const currentSection = sections[animState.sIdx];
 		const currentStepItem = currentSection ? currentSection[animState.stepInSIdx] : 1;
 		let totalDur = 2.0;
 		let cp = 0;
+		
+		const originalAllRings = allRings;
+		allRings = window.activeRings;
+
 		if (typeof currentStepItem === 'object' && currentStepItem.combined) {
 			const validSteps = [1, 2, 3, 4, 6, 7, 8, 9, 10];
 			if (!animState.combStep1) {
@@ -4995,10 +5242,13 @@
 			cp = (animState.time % phaseDef.timePerCycle) / phaseDef.timePerCycle;
 			setAllLEDs(false);
 			try { phaseDef.update(cp); } catch (e) {}
-			for (let r = 0; r < allRings.length; r++) {
+			for (let r = 0; r < allRings.length; r++) { 
 				replicateRing32Pattern(allRings[r]);
 			}
 		}
+
+		allRings = originalAllRings;
+
 		if (animState.time >= totalDur) { 
 			animState.time = 0;
 			let advanceSection = false;
@@ -5481,6 +5731,7 @@
                 }
             }
             const activeMeter = isMoonSlideActive ? (window.globalMoonMeter || 0) : window.currentTravelDist;
+			checkMilestones(activeMeter);
             const lengthEl = document.getElementById('lengthVal');
             const heightEl = document.getElementById('heightVal');
             if (lengthEl) lengthEl.innerText = `${activeMeter.toFixed(1)} m`;
@@ -5906,17 +6157,27 @@
 			window.lightningIntensity = 0;
 		}
 		jumpscares.forEach(js => {
-			if (!js.triggered && Math.abs(currentTravelDist - js.dist) < 0.2) {
+			if (!js.triggered && currentTravelDist >= js.dist - 0.5 && currentTravelDist < js.dist + js.length) {
 				js.triggered = true;
 				window.lightningIntensity = 1.0; 
 				playComplexRumble();
+				
+				if (js.generate) js.generate(); 
+
 				setTimeout(() => { js.triggered = false; }, 5000);
+			}
+			
+			if (currentTravelDist > js.dist - 15.0 && currentTravelDist < js.dist + js.length + 20.0) {
+				const flicker = Math.random() > 0.25 ? 1.0 : 0.1;
+				js.material.opacity = window.lightningIntensity * flicker;
+			} else {
+				js.material.opacity = 0.0;
 			}
 		});
 		if (window.lightningIntensity > 0) {
 			window.jumpFlashLight.position.copy(camera.position); 
 			window.jumpFlashLight.intensity = window.lightningIntensity * (Math.random() > 0.3 ? 1.0 : 0.2) * 800; 
-			window.lightningIntensity -= delta * 1.5; 
+			window.lightningIntensity -= delta * 0.4; 
 			if (window.lightningIntensity < 0) { window.lightningIntensity = 0; window.jumpFlashLight.intensity = 0; }
 		}
 		waterCurtains.forEach(wc => {
